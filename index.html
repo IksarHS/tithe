@@ -37,6 +37,7 @@ button{
 }
 button:hover:not(:disabled){border-color:var(--dim)}
 button:disabled{color:var(--faint); cursor:default}
+button:disabled .co,button:disabled .ct{color:var(--faint)}
 button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 .hidden{display:none !important}
 .ghost{visibility:hidden}
@@ -49,7 +50,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 .tease{color:var(--dim); max-width:21rem; margin:0 0 .45rem; min-height:1.2em}
 .gen{display:flex; justify-content:space-between; gap:.8rem; align-items:baseline}
 .gen .nm{flex:1}
-.gen .ct{color:var(--blood)}
+.gen .ct{color:var(--ink)}
 .gen .co{color:var(--dim); white-space:nowrap}
 .job{display:flex; align-items:center; gap:.55rem; max-width:21rem; margin:.3rem 0}
 .job .jname{flex:1}
@@ -131,7 +132,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 /* ============================== content ============================== */
 
 const SAVE_KEY = "tithe-save";
-const SAVE_VER = 1;
+const SAVE_VER = 2;
 
 const CURS = ["food","wood","stone","favor"];
 const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"totalFavor" };
@@ -149,28 +150,31 @@ const JOBS = [
 ];
 
 const BLD = [
-  { id:"hut",    name:"hut",    flavor:"room for two more.",            cost:{wood:12}, rate:1.3,  eff:{cap:2},               show:s=>s.proj.fire,    sprite:"hut" },
+  { id:"hut",    name:"hut",    flavor:"room for two.",                 cost:{wood:12}, rate:1.3,  eff:{cap:2},               show:s=>s.proj.fire,    sprite:"hut" },
   { id:"farm",   name:"farm",   flavor:"rows in the dirt.",             cost:{wood:25}, rate:1.18, eff:{job:"f", per:0.25},   show:s=>s.pop>=2,       sprite:"farm" },
   { id:"quarry", name:"quarry", flavor:"the hill opens.",               cost:{wood:60}, rate:1.18, eff:{job:"m", per:0.25},   show:s=>s.bld.farm>=1,  sprite:"adit" },
-  { id:"sawpit", name:"sawpit", flavor:"the logs come apart easier.",   cost:{wood:50,stone:15}, rate:1.18, eff:{job:"w", per:0.25}, show:s=>s.bld.quarry>=1, sprite:"sawpit" },
+  { id:"sawpit", name:"sawpit", flavor:"the logs come apart.",          cost:{wood:50,stone:15}, rate:1.18, eff:{job:"w", per:0.25}, show:s=>s.bld.quarry>=1, sprite:"sawpit" },
 ];
 
 const PROJ = [
   { id:"fire",    name:"a fire",             flavor:"the cold backs off a step.",  cost:{wood:10},           done:"lit",  show:s=>s.totalWood>=6 },
   { id:"tools",   name:"stone tools",        flavor:"flint edges.",                cost:{wood:30,stone:10},  done:"made", show:s=>s.totalStone>=3, eff:{allJobs:1.5} },
-  { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:90,wood:60}, done:"open", show:s=>s.totalStone>=150 },
+  { id:"rats",    name:"rats in the granary",flavor:s=>nameAt(s.ratsIdx)+" sits up with a stick.", cost:{wood:15}, done:"kept", show:s=>s.totalFood>=120 },
+  { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:90,wood:60}, done:"open", show:s=>s.totalStone>=70 },
   { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:null, show:s=>s.mir.obedience },
 ];
 
 const MIR = [
-  { id:"goodyear",  name:"a good year", flavor:"the rain falls when asked.", cost:{favor:25}, done:"granted", eff:{out:"food",  x:2}, show:s=>s.turn1 },
-  { id:"obedience", name:"obedience",   flavor:"no one wonders anymore.",    cost:{favor:60}, done:"granted", eff:{out:"favor", x:2}, show:s=>s.mir.goodyear },
+  { id:"goodyear",  name:"a good year", flavor:"the rain falls when asked.", cost:{favor:60},  done:"granted", eff:{out:"food",  x:2}, show:s=>s.turn1 },
+  { id:"obedience", name:"obedience",   flavor:"no one wonders anymore.",    cost:{favor:150}, done:"granted", eff:{out:"favor", x:2}, show:s=>s.mir.goodyear },
 ];
 
 const LEX = [
-  { id:"h-act",     pre:"actions",     post:"answers" },
-  { id:"h-village", pre:"the village", post:"the flock" },
-  { id:"popWord",   pre:"villagers",   post:"stock" },
+  { id:"h-act",       pre:"actions",        post:"answers" },
+  { id:"h-village",   pre:"the village",    post:"the flock" },
+  { id:"popWord",     pre:"villagers",      post:"stock" },
+  { id:"act-berries", pre:"gather berries", post:"grant berries" },
+  { id:"act-wood",    pre:"cut wood",       post:"grant wood" },
 ];
 
 const NAMES = ["mara","aldo","edda","bram","sela","otto","wren","hale","ivo","june",
@@ -190,8 +194,10 @@ const SPREAD = [
 
 const UPKEEP   = 0.25;                 // food/s per villager; priests eat double
 const ARRIVE   = { base:15, rate:1.3 };// food stock that draws the next villager
+const ARRIVE_CD = 20;                  // seconds between arrivals — an absence must be seen
 const LEAVE_S  = 20;                   // seconds at zero food before one walks away
-const SURGE    = { x:8, s:90 };        // the offering's gift
+const SURGE    = { x:8, s:90 };        // the offering's gift — it feeds the fields, never the shrine
+const RATS_DRAIN = 0.5;                // food/s while no one watches the granary
 const OFFER    = { base:5, rate:1.5 }; // favor yield per offering
 const CAP_HUT  = 2;
 const OFFLINE_CAP_S = 3600;
@@ -221,7 +227,7 @@ function fresh() {
     pop:0, jobs:{f:0,w:0,m:0,p:0},
     bld:{hut:0,farm:0,quarry:0,sawpit:0},
     proj:{}, mir:{},
-    offerings:0, nameIdx:0, surgeUntil:0, turn1:false, glowLock:0,
+    offerings:0, nameIdx:0, surgeLeft:0, arriveCd:0, ratsIdx:-1, turn1:false, glowLock:0,
     starveT:0, clicks:0, walkPhase:0, smokePhase:0,
     seen:{},
   };
@@ -234,6 +240,10 @@ function migrate(raw) {
   }
   for (const k of Object.keys(f.jobs)) if (typeof s.jobs[k] !== "number") s.jobs[k] = 0;
   for (const k of Object.keys(f.bld))  if (typeof s.bld[k]  !== "number") s.bld[k]  = 0;
+  /* v1 -> v2: the surge was a wall-clock stamp; now it is seconds, paid in dt */
+  if (raw && typeof raw.surgeUntil === "number" && typeof raw.surgeLeft !== "number") {
+    s.surgeLeft = Math.max(0, Math.min(SURGE.s, (raw.surgeUntil - (raw.last || 0)) / 1000));
+  }
   s.v = SAVE_VER;
   return s;
 }
@@ -264,7 +274,8 @@ const nameOrder = (function () {
   }
   return a;
 })();
-const nextName = () => NAMES[nameOrder[S.nameIdx % NAMES.length]];
+const nameAt = i => NAMES[nameOrder[((i % NAMES.length) + NAMES.length) % NAMES.length]];
+const nextName = () => nameAt(S.nameIdx);
 
 /* ============================== formatting ============================== */
 
@@ -284,18 +295,22 @@ const fmtRate = n => {
 
 /* ============================== economy ============================== */
 
-const surgeMult = () => Date.now() < S.surgeUntil ? SURGE.x : 1;
+const surgeMult = () => S.surgeLeft > 0 ? SURGE.x : 1;
 const mirMult = out => MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.out===out ? u.eff.x : 1), 1);
 const projAllJobs = () => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff.allJobs ? p.eff.allJobs : 1), 1);
 const bldJobMult = j => BLD.reduce((m,b)=> m * (b.eff && b.eff.job===j ? 1 + b.eff.per*(S.bld[b.id]||0) : 1), 1);
 
-const jobRate = j => {
+const jobRate = (j, surge) => {
   const def = JOBS.find(x=>x.id===j);
-  return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * surgeMult();
+  /* the gift feeds the fields, never the shrine: favor takes no surge, no flint */
+  if (def.out === "favor") return S.jobs[j] * def.base * bldJobMult(j) * mirMult(def.out);
+  const sm = surge === undefined ? surgeMult() : (surge ? SURGE.x : 1);
+  return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * sm;
 };
-const prodOf = cur => JOBS.reduce((t,jd)=> t + (jd.out===cur ? jobRate(jd.id) : 0), 0);
+const prodOf = (cur, surge) => JOBS.reduce((t,jd)=> t + (jd.out===cur ? jobRate(jd.id, surge) : 0), 0);
 const upkeep = () => (S.pop + S.jobs.p * ((JOBS.find(j=>j.id==="p").eats||1) - 1)) * UPKEEP;
-const rateOf = cur => prodOf(cur) - (cur==="food" ? upkeep() : 0);
+const ratsDrain = () => (S.seen["pp:rats"] && !S.proj.rats) ? RATS_DRAIN : 0;
+const rateOf = cur => prodOf(cur) - (cur==="food" ? upkeep() + ratsDrain() : 0);
 const totalProd = () => prodOf("food") + prodOf("wood") + prodOf("stone");
 
 const cap = () => S.bld.hut * CAP_HUT;
@@ -336,10 +351,13 @@ function genVillage(seed) {
   const hor = [];
   for (let i = 0; i < 6; i++) hor.push({ c0:i*12, c1:i*12+12, row:5.7 + r()*0.7 });
   const trunks = [];
-  for (let i = 0; i < 8; i++) trunks.push({ col:2 + i*2.4 + r()*0.8, top:6.3 + r()*0.8, h:2.6 + r()*0.9 });
+  for (let i = 0; i < 8; i++) {     /* feet share the meadow baseline — a treeline, not threads */
+    const col = 2 + i*2.4 + r()*0.8, top = 6.3 + r()*0.8;
+    trunks.push({ col, top, h:10.2 - top + r()*0.3 });
+  }
   const canopy = [];
-  for (let i = 0; i < 7; i++) canopy.push({ col:1 + i*2.8 + r()*0.9, row:5.2 + r()*0.9, w:3.2 + r()*1.4, h:1.4 + r()*0.8 });
-  const tufts = [];
+  for (let i = 0; i < 7; i++) canopy.push({ col:1 + i*3.4 + r()*0.9, row:5.2 + r()*0.9, w:2.6 + r()*1.0, h:1.4 + r()*0.8 });
+  const tufts = [];                 /* kept for the frozen call order; never painted */
   for (let i = 0; i < 18; i++) tufts.push({ col:22 + r()*48, row:8.2 + r()*3.4 });
   const rocks = [];
   for (let i = 0; i < 6; i++) rocks.push({ col:72 + i*3.6 + r()*1.2, row:5.6 + r()*2.2, w:1.0 + r()*0.7, h:0.5 + r()*0.4 });
@@ -373,7 +391,7 @@ function villageScene() {
   if (S.bld.quarry > 0) builds.push({ sprite:"adit", col:ANCHORS.adit.col, row:ANCHORS.adit.row });
   if (S.bld.sawpit > 0) builds.push({ sprite:"sawpit", col:ANCHORS.sawpit.col, row:ANCHORS.sawpit.row });
   if (S.proj.fire) builds.push({ sprite:"fire", col:ANCHORS.fire.col, row:ANCHORS.fire.row });
-  const hollow = !S.proj.shrineX && (S.seen["p:shrineX"] || S.totalStone >= 150);
+  const hollow = !S.proj.shrineX && (S.seen["p:shrineX"] || S.totalStone >= 70);
   if (hollow) builds.push({ sprite:"hollow", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
   if (S.proj.shrineX) builds.push({ sprite:"shrine", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
 
@@ -432,12 +450,11 @@ const PAL = {
   skyLo:"#12100d", skyHi:"#2e2a21", skyRed:"#26110c",
   hillLo:"#171410", hillHi:"#27211a", hillRed:"#241510",
   meadowLo:"#1d1a15", meadowHi:"#322b1f", meadowRed:"#2a1a13",
-  tuft:"#15130f",
   treeLo:"#1b2114", treeHi:"#2a321f", trunk:"#16140f",
   rock:"#2c2822", rockHi:"#363026",
   buildLo:"#332d24", buildHi:"#4a4133",
   fig:"#cfc5b2", figP:"#a14034",
-  fire:"#e8d4a4", smoke:"#6f6a5e", fleck:"#a14034",
+  fire:"#e8d4a4", ember:"#8a6a40", smoke:"#7f7a6c", fleck:"#a14034",
   star:"#5a5345", hollow:"#060504",
 };
 
@@ -480,8 +497,6 @@ function paint() {
   let meadow = mix(PAL.meadowLo, PAL.meadowHi, sc.g);
   if (sc.r > 0) meadow = mix(meadow, PAL.meadowRed, sc.r);
   ctx.fillStyle = meadow; ctx.fillRect(0, Y(7.6), cw, chh);
-  ctx.fillStyle = PAL.tuft;
-  for (const t of FIELDG.tufts) ctx.fillRect(X(t.col), Y(t.row), 2.5, 1.5);
 
   /* treeline (left) */
   ctx.fillStyle = PAL.trunk;
@@ -514,7 +529,7 @@ function paint() {
 
   /* smoke */
   ctx.fillStyle = PAL.smoke;
-  for (const s of sc.smoke) ctx.fillRect(X(s.col), Y(s.row), 2, 2);
+  for (const s of sc.smoke) ctx.fillRect(X(s.col), Y(s.row), 2.5, 2.5);
 }
 
 function drawSprite(b, X, Y, buildC) {
@@ -535,15 +550,14 @@ function drawSprite(b, X, Y, buildC) {
     ctx.fillRect(x - 5, y - 5, 10, 10);
     ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 2.5, y - 1, 5, 6);
   } else if (b.sprite === "fire") {
-    ctx.fillStyle = PAL.fire; ctx.fillRect(x - 2, y - 4, 4, 4);
-    ctx.fillStyle = buildC;
-    ctx.fillRect(x - 5, y, 10, 2);
+    ctx.fillStyle = PAL.ember; ctx.fillRect(x - 3, y - 2, 6, 2);
+    ctx.fillStyle = PAL.fire; ctx.fillRect(x - 2, y - 6, 4, 5);
   } else if (b.sprite === "hollow") {
     ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 4, y - 5, 8, 8);
   } else if (b.sprite === "shrine") {
-    ctx.fillRect(x - 2.5, y - 10, 5, 13);
-    ctx.fillRect(x - 6, y - 8, 12, 2.5);
-    if (S.totalFavor > 0) { ctx.fillStyle = PAL.fleck; ctx.fillRect(x - 1.5, y - 9.5, 3, 2); }
+    ctx.fillRect(x - 3, y - 13, 6, 16);
+    ctx.fillRect(x - 8, y - 10, 16, 3);
+    if (S.totalFavor > 0) { ctx.fillStyle = PAL.fleck; ctx.fillRect(x - 2, y - 12.5, 4, 2.5); }
   }
 }
 
@@ -570,7 +584,7 @@ function makeRow(def, kind) {
   const co = document.createElement("span"); co.className = "co";
   btn.appendChild(nm); btn.appendChild(ct); btn.appendChild(co);
   const tease = document.createElement("div"); tease.className = "tease";
-  tease.textContent = def.flavor || "";
+  tease.textContent = typeof def.flavor === "function" ? def.flavor(S) : (def.flavor || "");
   wrap.appendChild(btn); wrap.appendChild(tease);
   rowNodes[kind + "-" + def.id] = { btn, nm, ct, co, tease, def, kind };
   btn.addEventListener("click", () => {
@@ -615,7 +629,8 @@ function doOffering() {
   const y = offerYield();
   S.favor += y; S.totalFavor += y;
   S.offerings++; S.nameIdx++;
-  S.surgeUntil = Date.now() + SURGE.s * 1000;
+  S.surgeLeft = SURGE.s;
+  S.arriveCd = Math.max(S.arriveCd, ARRIVE_CD);   /* the gap must be seen before it closes */
   if (!S.turn1) {
     S.turn1 = true;
     S.glowLock = Math.min(1, Math.log10(1 + S.totalFood + S.totalWood + S.totalStone) / 4);
@@ -650,19 +665,20 @@ function checkReveals() {
   if (S.totalStone > 0) see("row-stone", els["row-stone"]);
   if (S.turn1) see("row-favor", els["row-favor"]);
   for (const a of ACTS) if (a.show && (S.seen["a:"+a.id] || a.show(S))) see("a:"+a.id, els[a.el], true);
-  if (S.pop > 0) see("village", els["sec-village"]);
+  if (S.pop > 0 || S.bld.hut > 0) see("village", els["sec-village"]);
   for (const j of JOBS) if (S.seen["j:"+j.id] || j.show(S)) see("j:"+j.id, els["job-"+j.id], true);
 
   /* rows rebuild on reload: keyed on the row's absence, not on seen */
   for (const def of PROJ) {
     if (!rowNodes["proj-"+def.id] && (S.seen["pp:"+def.id] || (def.show ? def.show(S) : true))) {
       const isNew = !S.seen["pp:"+def.id];
+      if (def.id === "rats" && S.ratsIdx < 0) { S.ratsIdx = S.nameIdx; S.nameIdx++; }
       see("proj", els["sec-proj"]);
       els["projList"].appendChild(makeRow(def, "proj"));
       S.seen["pp:"+def.id] = 1;
       if (booted && isNew) rowNodes["proj-"+def.id].btn.classList.add("reveal");
     }
-    if (def.id === "shrineX" && (S.totalStone >= 150 || S.seen["pp:shrineX"])) S.seen["p:shrineX"] = 1;
+    if (def.id === "shrineX" && (S.totalStone >= 70 || S.seen["pp:shrineX"])) S.seen["p:shrineX"] = 1;
   }
   for (const def of BLD) {
     if (!rowNodes["bld-"+def.id] && (S.seen["bb:"+def.id] || def.show(S))) {
@@ -705,8 +721,13 @@ function render() {
   setText(els["favorRate"], prodOf("favor") > 0 ? fmtRate(rateOf("favor")) : "");
 
   setText(els["h-act"], lex("h-act"));
+  setText(els["act-berries"], lex("act-berries"));
+  setText(els["act-wood"], lex("act-wood"));
   setText(els["h-village"], lex("h-village"));
-  setText(els["popLine"], lex("popWord") + " " + S.pop + " / " + cap() + " · idle " + idle());
+  let pl = lex("popWord") + " " + S.pop + " / " + cap() + " · idle " + idle();
+  if (S.proj.fire && S.pop < cap() && S.food < arriveAt())
+    pl += " · next at " + fmt(arriveAt()) + " food";
+  setText(els["popLine"], pl);
 
   for (const j of JOBS) {
     setText(els["jn-"+j.id], String(S.jobs[j.id]));
@@ -734,9 +755,12 @@ function render() {
   if (S.seen["shrine"]) {
     setText(els["offer"], "an offering — " + nextName());
     els["offer"].disabled = S.pop < 1;
-    setText(els["shrineTease"], S.turn1 ? "they were never your hands." : "it was waiting.");
-    const left = Math.ceil((S.surgeUntil - Date.now()) / 1000);
-    setText(els["surgeLine"], left > 0 ? "the air hums · " + left + "s" : "");
+    setText(els["shrineTease"],
+      S.turn1 ? (S.offerings >= 2 ? "" : "they were never your hands.") : "it was waiting.");
+    /* the deal is on the table before the first click; afterwards, the clock runs */
+    const left = Math.ceil(S.surgeLeft);
+    const terms = "yield ×" + SURGE.x + " · ";
+    setText(els["surgeLine"], left > 0 ? terms + left + "s" : (S.turn1 ? "" : terms + SURGE.s + "s"));
   }
 
   if (S.offerings !== lastSpread) {
@@ -762,15 +786,20 @@ function tick() {
     S.smokePhase += dt * smokeRate() * 0.4;
   }
 
+  /* the surge pays exactly its seconds, even across one long tick */
+  const sDt = Math.min(dt, Math.max(0, S.surgeLeft));
   for (const cur of CURS) {
-    const p = prodOf(cur);
-    if (p > 0) { S[cur] += p * dt; S[TOT[cur]] += p * dt; }
+    const gain = (sDt > 0 ? prodOf(cur, true) * sDt : 0) + prodOf(cur, false) * (dt - sDt);
+    if (gain > 0) { S[cur] += gain; S[TOT[cur]] += gain; }
   }
+  S.surgeLeft = Math.max(0, S.surgeLeft - dt);
   if (S.pop > 0 || S.jobs.p > 0) S.food = Math.max(0, S.food - upkeep() * dt);
+  if (ratsDrain() > 0) S.food = Math.max(0, S.food - RATS_DRAIN * dt);
 
-  /* arrivals: the fire draws them; the food keeps them */
-  if (S.proj.fire && S.pop < cap() && S.food >= arriveAt()) {
-    S.pop++;
+  /* arrivals: the fire draws them; the food keeps them; the road takes time */
+  S.arriveCd = Math.max(0, S.arriveCd - dt);
+  if (S.proj.fire && S.pop < cap() && S.food >= arriveAt() && S.arriveCd === 0) {
+    S.pop++; S.arriveCd = ARRIVE_CD;
   }
 
   /* an empty larder: one walks into the treeline (never dies) */
@@ -834,11 +863,11 @@ window.__tithe = {
   get state() { return S; },
   tick, render, save, migrate, fresh,
   JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, ANCHORS, SITES, PAL,
-  UPKEEP, ARRIVE, SURGE, OFFER, LEAVE_S,
+  UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   buyBld, buyProj, buyMir, doOffering, fixJobs,
-  jobRate, prodOf, rateOf, upkeep, totalProd, cap, idle, arriveAt, offerYield,
+  jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
   bldCost, canAfford, costText, surgeMult, capS, clickPower,
-  smokeRate, glowT, redT, nextName,
+  smokeRate, glowT, redT, nextName, nameAt,
   genVillage, villageScene, fmt, fmtStore, fmtRate, mulberry32,
 };
 </script>

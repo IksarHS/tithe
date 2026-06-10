@@ -38,15 +38,15 @@ for (let i = 0; i < 3; i++) click("act-berries");
 S.wood = 10; S.totalWood = 10; click("proj-fire");
 S.wood = 12; click("bld-hut");
 S.food = 16; ff(0.1);                    // villager 1
-S.food = 21; ff(0.1);                    // villager 2
+S.food = 60; ff(21);                     // villager 2, after the road
 click("jp-f"); click("jp-f");
 S.wood = 25; click("bld-farm");
 S.wood = 60; click("bld-quarry");
 click("jm-f"); click("jp-m");
 S.wood = 30; S.stone = 10; S.totalStone = 10; click("proj-tools");
 S.wood = 16; click("bld-hut");           // hut 2 -> cap 4
-S.food = 30; ff(0.1);                    // villager 3
-S.food = 40; ff(0.1);                    // villager 4
+S.food = 40; ff(21);                     // villager 3, after the road
+S.food = 50; ff(21);                     // villager 4
 click("jp-f"); click("jp-w");
 S.wood = 55; S.stone = 16; ff(0.001); click("bld-sawpit");
 
@@ -61,18 +61,19 @@ console.log("save-act1.json  pop", S.pop, "jobs", JSON.stringify(S.jobs));
 S.totalStone = 155; ff(0.1);             // the hollow appears
 S.stone = 90; S.wood = 60; click("proj-shrineX");
 click("offer");                          // the turn — offering 1
-S.food = 60; ff(0.1);                    // refill a villager
-S.food = 80; ff(0.1);
+S.food = 60; ff(21);                     // the road takes time; one walks in
+S.food = 80; ff(21);                     // the second waits out the cooldown too
 click("jp-p");                           // a priest
-S.favor = 25; click("mir-goodyear");
-S.favor = 60; click("mir-obedience");
+S.favor = 60; click("mir-goodyear");
+S.favor = 150; click("mir-obedience");
+S.wood = 20; click("proj-rats");         // the granary kept (revealed back in act 1)
 click("offer");                          // offering 2
 click("offer");                          // offering 3
 S.food = 90; ff(0.1);
 
 /* shot 2 — after the turn: red, flecks, priests, the tithe teased */
 S.food = 31.7; S.wood = 12.4; S.stone = 8.9; S.favor = 11.2;
-S.totalFavor = 140; S.surgeUntil = Date.now() + 64 * 1000;
+S.totalFavor = 140; S.surgeLeft = 64;
 ff(0.001); G.save();
 fs.writeFileSync(path.join(outdir, "save-act2.json"), store["tithe-save"]);
 console.log("save-act2.json  pop", S.pop, "offerings", S.offerings, "turn1", S.turn1,

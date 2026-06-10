@@ -10,8 +10,7 @@ try {
   var payload = decodeURIComponent(location.hash.slice(1));
   if (payload) {
     var sv = JSON.parse(payload);
-    sv.last = Date.now();           /* no offline drift in screenshots */
-    if (sv.surgeUntil > 0) sv.surgeUntil = Date.now() + 64000;
+    sv.last = Date.now();           /* no offline drift in screenshots; surgeLeft is dt-paid, no re-stamp */
     localStorage.setItem("tithe-save", JSON.stringify(sv));
     document.body.textContent = "seeded " + payload.length + " chars";
   } else {
