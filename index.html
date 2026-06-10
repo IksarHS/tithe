@@ -38,7 +38,7 @@ button{
 button:hover:not(:disabled){border-color:var(--dim)}
 button:disabled{color:var(--faint); cursor:default}
 button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
-.hidden{display:none}
+.hidden{display:none !important}
 .ghost{visibility:hidden}
 .reveal{animation:fade .7s}
 @keyframes fade{from{opacity:0}}
@@ -89,6 +89,10 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
       <div class="store hidden" id="row-stone"><span class="nm">stone</span><span><span class="val" id="stoneVal">0.0</span><span class="rate" id="stoneRate"></span></span></div>
       <div class="store hidden" id="row-favor"><span class="nm">favor</span><span><span class="val" id="favorVal">0.0</span><span class="rate" id="favorRate"></span></span></div>
     </section>
+    <section id="sec-mir" class="hidden">
+      <h2 id="h-mir">miracles</h2>
+      <div id="mirList"></div>
+    </section>
   </div>
 
   <div class="col" id="c2">
@@ -116,10 +120,6 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
       <button id="offer"></button>
       <div class="tease" id="shrineTease"></div>
       <div id="surgeLine"></div>
-    </section>
-    <section id="sec-mir" class="hidden">
-      <h2 id="h-mir">miracles</h2>
-      <div id="mirList"></div>
     </section>
   </div>
 </div>
@@ -342,7 +342,7 @@ function genVillage(seed) {
   const tufts = [];
   for (let i = 0; i < 18; i++) tufts.push({ col:22 + r()*48, row:8.2 + r()*3.4 });
   const rocks = [];
-  for (let i = 0; i < 6; i++) rocks.push({ col:72 + i*3.6 + r()*1.2, row:5.2 + r()*2.6, w:2.2 + r()*1.6, h:1.1 + r()*0.9 });
+  for (let i = 0; i < 6; i++) rocks.push({ col:72 + i*3.6 + r()*1.2, row:5.6 + r()*2.2, w:1.0 + r()*0.7, h:0.5 + r()*0.4 });
   const flecks = [];
   for (let i = 0; i < 30; i++) flecks.push({ dc:(r()-0.5)*5.5, dr:0.5 + r()*1.1 });
   return { stars, hor, trunks, canopy, tufts, rocks, flecks };
@@ -429,13 +429,15 @@ const mix = (a, b, t) => {
 };
 
 const PAL = {
-  skyLo:"#12100d", skyHi:"#262017", skyRed:"#26110c",
-  hill:"#181511", hillRed:"#1d120d",
-  meadow:"#1b1916", tuft:"#15130f",
-  tree:"#20231c", trunk:"#16140f",
+  skyLo:"#12100d", skyHi:"#2e2a21", skyRed:"#26110c",
+  hillLo:"#171410", hillHi:"#27211a", hillRed:"#241510",
+  meadowLo:"#1d1a15", meadowHi:"#322b1f", meadowRed:"#2a1a13",
+  tuft:"#15130f",
+  treeLo:"#1b2114", treeHi:"#2a321f", trunk:"#16140f",
   rock:"#2c2822", rockHi:"#363026",
-  build:"#0b0a08", fig:"#b6ad9c", figP:"#a14034",
-  fire:"#d9c9a0", smoke:"#6f6a5e", fleck:"#a14034",
+  buildLo:"#332d24", buildHi:"#4a4133",
+  fig:"#cfc5b2", figP:"#a14034",
+  fire:"#e8d4a4", smoke:"#6f6a5e", fleck:"#a14034",
   star:"#5a5345", hollow:"#060504",
 };
 
@@ -466,7 +468,8 @@ function paint() {
   for (const st of FIELDG.stars) ctx.fillRect(X(st.col), Y(st.row), 1.5, 1.5);
 
   /* hills + quarry hill mass */
-  let hill = sc.r > 0 ? mix(PAL.hill, PAL.hillRed, sc.r) : PAL.hill;
+  let hill = mix(PAL.hillLo, PAL.hillHi, sc.g);
+  if (sc.r > 0) hill = mix(hill, PAL.hillRed, sc.r);
   ctx.fillStyle = hill;
   for (const h of FIELDG.hor) ctx.fillRect(X(h.c0), Y(h.row), X(h.c1 - h.c0) + 1, chh);
   ctx.beginPath();
@@ -474,14 +477,16 @@ function paint() {
   ctx.lineTo(X(96), chh); ctx.lineTo(X(70), chh); ctx.closePath(); ctx.fill();
 
   /* meadow */
-  ctx.fillStyle = PAL.meadow; ctx.fillRect(0, Y(7.6), cw, chh);
+  let meadow = mix(PAL.meadowLo, PAL.meadowHi, sc.g);
+  if (sc.r > 0) meadow = mix(meadow, PAL.meadowRed, sc.r);
+  ctx.fillStyle = meadow; ctx.fillRect(0, Y(7.6), cw, chh);
   ctx.fillStyle = PAL.tuft;
   for (const t of FIELDG.tufts) ctx.fillRect(X(t.col), Y(t.row), 2.5, 1.5);
 
   /* treeline (left) */
   ctx.fillStyle = PAL.trunk;
   for (const t of FIELDG.trunks) ctx.fillRect(X(t.col), Y(t.top), 2, Y(t.h) - Y(0));
-  ctx.fillStyle = PAL.tree;
+  ctx.fillStyle = mix(PAL.treeLo, PAL.treeHi, sc.g);
   for (const c of FIELDG.canopy) ctx.fillRect(X(c.col), Y(c.row), X(c.w) - X(0), Y(c.h) - Y(0));
 
   /* quarry face */
@@ -492,18 +497,19 @@ function paint() {
   }
 
   /* builds */
-  for (const b of sc.builds) drawSprite(b, cw, chh, X, Y);
+  const buildC = mix(PAL.buildLo, PAL.buildHi, sc.g);
+  for (const b of sc.builds) drawSprite(b, X, Y, buildC);
 
   /* flecks — the picture remembers */
   ctx.fillStyle = PAL.fleck;
-  for (const f of sc.flecks) ctx.fillRect(X(f.col), Y(f.row), 2, 2);
+  for (const f of sc.flecks) ctx.fillRect(X(f.col), Y(f.row), 2.5, 2.5);
 
   /* figures */
   for (const f of sc.figures) {
     ctx.fillStyle = f.job === "p" ? PAL.figP : PAL.fig;
     const fx = X(f.col), fy = Y(f.row);
-    ctx.fillRect(fx, fy - 5, 2, 5);
-    ctx.fillRect(fx - 0.5, fy - 7, 3, 2);
+    ctx.fillRect(fx - 1, fy - 8, 3, 8);
+    ctx.fillRect(fx - 1.5, fy - 11, 4, 3);
   }
 
   /* smoke */
@@ -511,33 +517,33 @@ function paint() {
   for (const s of sc.smoke) ctx.fillRect(X(s.col), Y(s.row), 2, 2);
 }
 
-function drawSprite(b, cw, chh, X, Y) {
+function drawSprite(b, X, Y, buildC) {
   const x = X(b.col), y = Y(b.row);
-  ctx.fillStyle = PAL.build;
+  ctx.fillStyle = buildC;
   if (b.sprite === "hut") {
     ctx.beginPath();
-    ctx.moveTo(x - 7, y + 6); ctx.lineTo(x, y - 6); ctx.lineTo(x + 7, y + 6);
+    ctx.moveTo(x - 8, y + 6); ctx.lineTo(x, y - 7); ctx.lineTo(x + 8, y + 6);
     ctx.closePath(); ctx.fill();
     ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 1.5, y + 1, 3, 5);
   } else if (b.sprite === "farm") {
-    for (let i = 0; i < 3; i++) ctx.fillRect(x + i * 5 - 5, y, 4, 2);
+    for (let i = 0; i < 3; i++) ctx.fillRect(x + i * 5 - 5, y, 4, 2.5);
   } else if (b.sprite === "sawpit") {
-    ctx.fillRect(x - 6, y + 2, 12, 2);
-    ctx.fillRect(x - 4, y - 3, 2, 7);
-    ctx.fillRect(x + 2, y - 5, 2, 9);
+    ctx.fillRect(x - 6, y + 2, 12, 2.5);
+    ctx.fillRect(x - 4, y - 3, 2.5, 7);
+    ctx.fillRect(x + 2, y - 5, 2.5, 9);
   } else if (b.sprite === "adit") {
-    ctx.fillRect(x - 4, y - 4, 8, 8);
-    ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 2, y - 1, 4, 5);
+    ctx.fillRect(x - 5, y - 5, 10, 10);
+    ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 2.5, y - 1, 5, 6);
   } else if (b.sprite === "fire") {
-    ctx.fillStyle = PAL.fire; ctx.fillRect(x - 2, y - 3, 4, 3);
-    ctx.fillStyle = PAL.build;
-    ctx.fillRect(x - 5, y, 10, 1.5);
+    ctx.fillStyle = PAL.fire; ctx.fillRect(x - 2, y - 4, 4, 4);
+    ctx.fillStyle = buildC;
+    ctx.fillRect(x - 5, y, 10, 2);
   } else if (b.sprite === "hollow") {
-    ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 3, y - 4, 6, 7);
+    ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 4, y - 5, 8, 8);
   } else if (b.sprite === "shrine") {
-    ctx.fillRect(x - 2, y - 9, 4, 12);
-    ctx.fillRect(x - 5, y - 7, 10, 2);
-    if (S.totalFavor > 0) { ctx.fillStyle = PAL.fleck; ctx.fillRect(x - 1, y - 8.5, 2, 1.5); }
+    ctx.fillRect(x - 2.5, y - 10, 5, 13);
+    ctx.fillRect(x - 6, y - 8, 12, 2.5);
+    if (S.totalFavor > 0) { ctx.fillStyle = PAL.fleck; ctx.fillRect(x - 1.5, y - 9.5, 3, 2); }
   }
 }
 
@@ -647,29 +653,33 @@ function checkReveals() {
   if (S.pop > 0) see("village", els["sec-village"]);
   for (const j of JOBS) if (S.seen["j:"+j.id] || j.show(S)) see("j:"+j.id, els["job-"+j.id], true);
 
+  /* rows rebuild on reload: keyed on the row's absence, not on seen */
   for (const def of PROJ) {
-    if (!S.seen["pp:"+def.id] && (def.show ? def.show(S) : true)) {
+    if (!rowNodes["proj-"+def.id] && (S.seen["pp:"+def.id] || (def.show ? def.show(S) : true))) {
+      const isNew = !S.seen["pp:"+def.id];
       see("proj", els["sec-proj"]);
       els["projList"].appendChild(makeRow(def, "proj"));
       S.seen["pp:"+def.id] = 1;
-      if (booted) rowNodes["proj-"+def.id].btn.classList.add("reveal");
+      if (booted && isNew) rowNodes["proj-"+def.id].btn.classList.add("reveal");
     }
     if (def.id === "shrineX" && (S.totalStone >= 150 || S.seen["pp:shrineX"])) S.seen["p:shrineX"] = 1;
   }
   for (const def of BLD) {
-    if (!S.seen["bb:"+def.id] && def.show(S)) {
+    if (!rowNodes["bld-"+def.id] && (S.seen["bb:"+def.id] || def.show(S))) {
+      const isNew = !S.seen["bb:"+def.id];
       see("bld", els["sec-bld"]);
       els["bldList"].appendChild(makeRow(def, "bld"));
       S.seen["bb:"+def.id] = 1;
-      if (booted) rowNodes["bld-"+def.id].btn.classList.add("reveal");
+      if (booted && isNew) rowNodes["bld-"+def.id].btn.classList.add("reveal");
     }
   }
   for (const def of MIR) {
-    if (!S.seen["mm:"+def.id] && def.show(S)) {
+    if (!rowNodes["mir-"+def.id] && (S.seen["mm:"+def.id] || def.show(S))) {
+      const isNew = !S.seen["mm:"+def.id];
       see("mir", els["sec-mir"]);
       els["mirList"].appendChild(makeRow(def, "mir"));
       S.seen["mm:"+def.id] = 1;
-      if (booted) rowNodes["mir-"+def.id].btn.classList.add("reveal");
+      if (booted && isNew) rowNodes["mir-"+def.id].btn.classList.add("reveal");
     }
   }
   if (S.proj.shrineX) see("shrine", els["sec-shrine"]);

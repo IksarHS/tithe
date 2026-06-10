@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- lab utility: writes a save into localStorage so a headless screenshot can
+     load ../index.html directly — no play-forward, no timing race.
+     usage: seed.html#<uri-encoded save json>  (empty hash clears the save),
+     then screenshot ../index.html with the same browser profile. -->
+<html><head><meta charset="utf-8"><title>seed</title></head>
+<body style="margin:0;background:#0e0d0c;color:#888;font:14px monospace;padding:1rem">
+<script>
+try {
+  var payload = decodeURIComponent(location.hash.slice(1));
+  if (payload) {
+    var sv = JSON.parse(payload);
+    sv.last = Date.now();           /* no offline drift in screenshots */
+    if (sv.surgeUntil > 0) sv.surgeUntil = Date.now() + 64000;
+    localStorage.setItem("tithe-save", JSON.stringify(sv));
+    document.body.textContent = "seeded " + payload.length + " chars";
+  } else {
+    localStorage.removeItem("tithe-save");
+    document.body.textContent = "cleared";
+  }
+} catch (e) { document.body.textContent = "seed failed: " + e.message; }
+</script>
+</body></html>

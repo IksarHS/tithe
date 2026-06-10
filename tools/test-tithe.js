@@ -43,6 +43,7 @@ ok(d.getElementById("scene").tagName === "CANVAS", "the field is a poster canvas
 const css = d.querySelector("style").textContent.replace(/\s/g, "");
 ok(/body{[^}]*overflow:hidden/.test(css), "one screen: body never scrolls");
 ok(/#work{[^}]*overflow:hidden/.test(css), "one screen: the work region never scrolls");
+ok(/\.hidden{display:none!important}/.test(css), "hidden always wins the cascade");
 ok(d.getElementById("sec-stores").classList.contains("hidden"), "stores hidden at boot");
 ok(d.getElementById("sec-village").classList.contains("hidden"), "the village hidden at boot");
 ok(d.getElementById("sec-proj").classList.contains("hidden"), "undertakings hidden at boot");
@@ -58,6 +59,7 @@ for (let i = 0; i < 3; i++) d.getElementById("act-berries").click();
 ok(S().food === 3 && S().clicks === 3, "three berries gathered");
 ok(!d.getElementById("sec-stores").classList.contains("hidden"), "stores revealed by the first gather");
 ok(d.getElementById("foodVal").textContent === "3.0", "stores count decimals");
+ok(d.getElementById("row-favor").classList.contains("hidden"), "favor does not exist yet");
 ok(!d.getElementById("act-wood").classList.contains("ghost"), "cut wood appears at 3 food");
 
 for (let i = 0; i < 6; i++) d.getElementById("act-wood").click();
@@ -243,6 +245,19 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const sc2 = G2.villageScene();
   ok(sc2.flecks.length === 2 && sc2.builds.some(b => b.sprite === "shrine"), "reload: the picture still remembers");
   ok(d2.getElementById("favorVal").classList.contains("blood"), "reload: the red does not wash off");
+  ok(["hut","farm","quarry","sawpit"].every(id => !!d2.getElementById("bld-" + id)),
+    "reload: every works row is rebuilt");
+  ok(["fire","tools","shrineX","tithe"].every(id => !!d2.getElementById("proj-" + id)),
+    "reload: every undertaking row is rebuilt");
+  ok(!!d2.getElementById("mir-goodyear") && !!d2.getElementById("mir-obedience"),
+    "reload: the miracle rows are rebuilt");
+  ok(!d2.getElementById("sec-bld").classList.contains("hidden") &&
+     !d2.getElementById("sec-proj").classList.contains("hidden") &&
+     !d2.getElementById("sec-mir").classList.contains("hidden"),
+    "reload: no panel forgets it was open");
+  ok(!d2.getElementById("bld-hut").querySelector(".btn") ||
+     !d2.getElementById("bld-hut").classList.contains("reveal"),
+    "reload: rebuilt rows do not replay their reveal");
 }
 
 /* ---------- migration and corruption ---------- */
