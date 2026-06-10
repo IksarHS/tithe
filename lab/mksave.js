@@ -37,16 +37,15 @@ S.seed = 1234567; // a fixed, good-looking field
 for (let i = 0; i < 3; i++) click("act-berries");
 S.wood = 10; S.totalWood = 10; click("proj-fire");
 S.wood = 12; click("bld-hut");
-S.food = 16; ff(0.1);                    // villager 1
-S.food = 60; ff(21);                     // villager 2, after the road
+S.food = 16; ff(0.1);                    // villager 1 — they simply come
+S.food = 60; ff(0.1);                    // villager 2, the moment the bar is crossed
 click("jp-f"); click("jp-f");
 S.wood = 25; click("bld-farm");
 S.wood = 60; click("bld-quarry");
 click("jm-f"); click("jp-m");
 S.wood = 30; S.stone = 10; S.totalStone = 10; click("proj-tools");
 S.wood = 16; click("bld-hut");           // hut 2 -> cap 4
-S.food = 40; ff(21);                     // villager 3, after the road
-S.food = 50; ff(21);                     // villager 4
+S.food = 60; ff(0.1); ff(0.1);           // villagers 3 and 4, one tick apart
 click("jp-f"); click("jp-w");
 S.wood = 55; S.stone = 16; ff(0.001); click("bld-sawpit");
 
@@ -61,13 +60,13 @@ console.log("save-act1.json  pop", S.pop, "jobs", JSON.stringify(S.jobs));
 S.totalStone = 155; ff(0.1);             // the hollow appears
 S.stone = 90; S.wood = 60; click("proj-shrineX");
 click("offer");                          // the turn — offering 1
-S.food = 60; ff(21);                     // the road takes time; one walks in
-S.food = 80; ff(21);                     // the second waits out the cooldown too
+S.food = 60; ff(21);                     // only the shrine's absence takes time; one walks in
 click("jp-p");                           // a priest
 S.favor = 60; click("mir-goodyear");
 S.favor = 150; click("mir-obedience");
-S.wood = 20; click("proj-rats");         // the granary kept (revealed back in act 1)
-click("offer");                          // offering 2
+S.wood = 65; click("proj-rats");         // the stores kept (revealed back in act 1)
+click("offer");                          // offering 2 — the village was full
+S.food = 90; ff(21);                     // the gap walks closed
 click("offer");                          // offering 3
 S.food = 90; ff(0.1);
 

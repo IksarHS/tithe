@@ -1,4 +1,5 @@
-/* pace-sim — a pure-math bot plays tithe at 3 clicks/s, act 1 THROUGH act 2.
+/* pace-sim — a pure-math bot plays tithe at a HUMAN 0.8 clicks/s, act 1 THROUGH act 2.
+ * (the click rate is the law: if a benchmark needs grinding, the game is wrong, not the bot)
  *
  * SYNC WARNING: every constant below is a hand-mirror of index.html.
  * If you change UPKEEP / ARRIVE / ARRIVE_CD / SURGE / OFFER / RATS / job bases
@@ -32,24 +33,24 @@ const JOBS = {
   m: { base: 0.25, out: "stone" },
   p: { base: 0.20, out: "favor", eats: 2 },
 };
-const BLD = {
-  hut:    { cost: { wood: 12 },            rate: 1.30 },
-  farm:   { cost: { wood: 25 },            rate: 1.18, job: "f", per: 0.25 },
-  quarry: { cost: { wood: 60 },            rate: 1.18, job: "m", per: 0.25 },
-  sawpit: { cost: { wood: 50, stone: 15 }, rate: 1.18, job: "w", per: 0.25 },
+const BLD = {  /* max = field anchors, mirrored from index.html */
+  hut:    { cost: { wood: 12 },            rate: 1.30, max: 5 },
+  farm:   { cost: { wood: 25 },            rate: 1.18, max: 3, job: "f", per: 0.25 },
+  quarry: { cost: { wood: 60 },            rate: 1.18, max: 1, job: "m", per: 0.25 },
+  sawpit: { cost: { wood: 50, stone: 15 }, rate: 1.18, max: 1, job: "w", per: 0.25 },
 };
 const PROJ = {
   fire:    { cost: { wood: 10 } },
   tools:   { cost: { wood: 30, stone: 10 }, allJobs: 1.5 },
-  rats:    { cost: { wood: 15 } },
+  rats:    { cost: { wood: 60 } },
   shrineX: { cost: { stone: 90, wood: 60 }, showStone: 70 },
 };
 const MIR = {
-  goodyear:  { cost: 60 },   /* food x2 */
+  goodyear:  { cost: 60 },   /* arrivals at half the food (arriveAt x0.5) */
   obedience: { cost: 150 },  /* favor x2; teases the tithe */
 };
 
-const CLICK_RATE = 3;     // clicks/s, clickPower 1
+const CLICK_RATE = 0.8;   // clicks/s — a relaxed human; clickPower 1, x2 with tools
 const DT = 0.25;          // sim step
 const WANT_P = 3;         // priests the bot chases after the turn
 
@@ -68,14 +69,13 @@ const jobRate = (s, j) => {
   if (JOBS[j].out === "favor") return s.jobs[j] * JOBS[j].base * (s.mir.obedience ? 2 : 1);
   return s.jobs[j] * JOBS[j].base * bldJobMult(s, j) *
     (s.proj.tools ? PROJ.tools.allJobs : 1) *
-    (s.surgeLeft > 0 ? SURGE.x : 1) *
-    (JOBS[j].out === "food" && s.mir.goodyear ? 2 : 1);
+    (s.surgeLeft > 0 ? SURGE.x : 1);
 };
 const prodOf = (s, cur) => Object.keys(JOBS).reduce((t, j) => t + (JOBS[j].out === cur ? jobRate(s, j) : 0), 0);
 const upkeep = s => (s.pop + s.jobs.p * ((JOBS.p.eats || 1) - 1)) * UPKEEP;
 const ratsDrain = s => (s.ratsSeen && !s.proj.rats) ? RATS.drain : 0;
 const cap = s => s.bld.hut * CAP_HUT;
-const arriveAt = s => ARRIVE.base * Math.pow(ARRIVE.rate, s.pop);
+const arriveAt = s => ARRIVE.base * Math.pow(ARRIVE.rate, s.pop) * (s.mir.goodyear ? 0.5 : 1);
 
 /* ---------- sim ---------- */
 function freshSim() {
@@ -93,7 +93,7 @@ const mark = (s, label) => s.events.push({ t: s.t, label });
 
 /* bot job policy: feed the mouths first, then priests (post-turn), then stone */
 function alloc(s) {
-  const fPer = JOBS.f.base * bldJobMult(s, "f") * (s.proj.tools ? 1.5 : 1) * (s.mir.goodyear ? 2 : 1);
+  const fPer = JOBS.f.base * bldJobMult(s, "f") * (s.proj.tools ? 1.5 : 1);
   const wantP = s.offerings > 0 ? WANT_P : 0;
   const J = { f: 0, w: 0, m: 0, p: 0 };
   let left = s.pop;
@@ -126,10 +126,11 @@ function step(s, allowOffer) {
   else if (s.bld.quarry < 1)   { buy = ["bld", "quarry"]; }
   else if (!s.proj.tools)      { buy = ["proj", "tools"]; }
   else if (!s.proj.shrineX) {
-    /* the grind: more masons, more quarries, until the hollow opens */
+    /* the grind: build out the finite works, then masons carry it to the hollow */
     if (s.totalStone >= PROJ.shrineX.showStone && afford(s, PROJ.shrineX.cost)) buy = ["proj", "shrineX"];
-    else if (afford(s, bldCost(s, "quarry")) && s.bld.quarry < 3) buy = ["bld", "quarry"];
-    else if (s.pop >= cap(s) && afford(s, bldCost(s, "hut")))     buy = ["bld", "hut"];
+    else if (s.bld.sawpit < BLD.sawpit.max && afford(s, bldCost(s, "sawpit"))) buy = ["bld", "sawpit"];
+    else if (s.bld.farm < BLD.farm.max && afford(s, bldCost(s, "farm")))       buy = ["bld", "farm"];
+    else if (s.pop >= cap(s) && s.bld.hut < BLD.hut.max && afford(s, bldCost(s, "hut"))) buy = ["bld", "hut"];
     else if (s.pop < cap(s)) click = "food";
   }
   else if (allowOffer) {
@@ -146,7 +147,7 @@ function step(s, allowOffer) {
     }
   }
 
-  /* the rats jump any queue: 15 wood stops a standing leak */
+  /* the rats jump any queue: 60 wood against a standing leak — a real decision now */
   if (s.ratsSeen && !s.proj.rats) buy = ["proj", "rats"];
 
   if (buy) {
@@ -161,8 +162,9 @@ function step(s, allowOffer) {
   }
 
   /* tick */
-  s[click] += CLICK_RATE * DT;
-  s["total" + click[0].toUpperCase() + click.slice(1)] += CLICK_RATE * DT;
+  const cp = s.proj.tools ? 2 : 1;
+  s[click] += CLICK_RATE * cp * DT;
+  s["total" + click[0].toUpperCase() + click.slice(1)] += CLICK_RATE * cp * DT;
   for (const cur of ["food", "wood", "stone", "favor"]) {
     const p = prodOf(s, cur);
     if (p > 0) {
@@ -171,10 +173,11 @@ function step(s, allowOffer) {
     }
   }
   s.food = Math.max(0, s.food - (upkeep(s) + ratsDrain(s)) * DT);
-  if (!s.ratsSeen && s.totalFood >= RATS.at) { s.ratsSeen = true; mark(s, "rats in the granary"); }
+  if (!s.ratsSeen && s.totalFood >= RATS.at) { s.ratsSeen = true; mark(s, "rats in the stores"); }
+  /* arrivals are instant; only an offering leaves a gap on the road */
   s.arriveCd = Math.max(0, s.arriveCd - DT);
   if (s.proj.fire && s.pop < cap(s) && s.food >= arriveAt(s) && s.arriveCd === 0) {
-    s.pop++; s.arriveCd = ARRIVE_CD; mark(s, "villager " + s.pop);
+    s.pop++; mark(s, "villager " + s.pop);
   }
   if (s.jobs.p >= WANT_P) {
     const fr = prodOf(s, "food") - upkeep(s) - ratsDrain(s);

@@ -103,7 +103,12 @@ scroll. Two regions, both reserved from boot:
 - Benchmarks (`npm run pace` after any constant change — keep the sim in sync):
   first villager < 60s; first building < 45s; the Hunger Wall is the ONLY
   allowed >3min flat stretch, with the offering visible the whole time; first
-  offering by bot < 8 min.
+  offering by bot < 8 min. The sim's bot clicks at 0.8/s — a relaxed human.
+  If a benchmark needs grinding to pass, the game is wrong, not the bot.
+- Works are capped at their field anchors (hut 5, farm 3, quarry 1, sawpit 1):
+  the ledger may never outgrow the picture. Arrivals are instant when food
+  crosses the bar; ONLY an offering leaves a gap on the road (the walk in from
+  the treeline is the wait, drawn on the field).
 
 ## Testing discipline
 
