@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tithe</title>
+<style>
+:root{
+  --bg:#0e0d0b; --ink:#c8c0b2; --dim:#7a7468; --faint:#534e44;
+  --line:#262219; --blood:#a14034;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:13px/1.45 Consolas,"Cascadia Mono","DejaVu Sans Mono",monospace;
+  overflow:hidden;
+}
+#app{display:grid; grid-template-rows:1fr 34vh; height:100vh}
+#work{
+  padding:.9rem 1.2rem 0; position:relative; overflow:hidden;
+  display:grid; grid-template-columns:1fr 1fr 1fr; column-gap:2.4rem;
+  align-content:start;
+}
+#top{grid-column:1/-1; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:.2rem}
+h1{font-size:.95rem; font-weight:normal; letter-spacing:.45em; margin:0}
+#meta{color:var(--faint); font-size:.72rem}
+#meta a{color:var(--faint)}
+h2{
+  font-size:.72rem; font-weight:normal; letter-spacing:.18em; color:var(--dim);
+  margin:1.05rem 0 .45rem; padding-bottom:.3rem; border-bottom:1px solid var(--line);
+}
+button{
+  font:inherit; color:var(--ink); background:none; border:1px solid var(--line);
+  display:block; width:100%; max-width:21rem; min-height:2.75rem;
+  padding:.4rem .7rem; margin:.4rem 0; text-align:left; cursor:pointer;
+}
+button:hover:not(:disabled){border-color:var(--dim)}
+button:disabled{color:var(--faint); cursor:default}
+button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
+.hidden{display:none}
+.ghost{visibility:hidden}
+.reveal{animation:fade .7s}
+@keyframes fade{from{opacity:0}}
+@media (prefers-reduced-motion: reduce){.reveal{animation:none}}
+.store{display:flex; justify-content:space-between; max-width:21rem; margin:.15rem 0}
+.store .val{font-weight:bold}
+.rate{color:var(--dim); margin-left:.55em; font-weight:normal}
+.tease{color:var(--dim); max-width:21rem; margin:0 0 .45rem; min-height:1.2em}
+.gen{display:flex; justify-content:space-between; gap:.8rem; align-items:baseline}
+.gen .nm{flex:1}
+.gen .ct{color:var(--blood)}
+.gen .co{color:var(--dim); white-space:nowrap}
+.job{display:flex; align-items:center; gap:.55rem; max-width:21rem; margin:.3rem 0}
+.job .jname{flex:1}
+.job .jn{min-width:2ch; text-align:right; font-weight:bold}
+.job .jb{
+  width:2.75rem; min-width:2.75rem; height:2.75rem; min-height:2.75rem;
+  padding:0; margin:0; text-align:center; flex:none;
+}
+#popLine{color:var(--dim); margin:.1rem 0 .5rem; min-height:1.2em}
+#surgeLine{color:var(--dim); min-height:1.2em; max-width:21rem}
+.blood{color:var(--blood)}
+#field{position:relative; border-top:1px solid var(--line)}
+#scene{display:block; width:100%; height:100%}
+@media (max-width:900px){
+  #work{grid-template-columns:1fr 1fr; column-gap:1.6rem}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="work">
+  <div id="top">
+    <h1>t i t h e</h1>
+    <div id="meta"><a href="#" id="mSave">save</a> · <a href="#" id="mExport">export</a> · <a href="#" id="mImport">import</a> · <a href="#" id="mWipe">wipe</a> &nbsp;autosaves · v1</div>
+  </div>
+
+  <div class="col" id="c1">
+    <section id="sec-act">
+      <h2 id="h-act">actions</h2>
+      <button id="act-berries">gather berries</button>
+      <button id="act-wood" class="ghost">cut wood</button>
+    </section>
+    <section id="sec-stores" class="hidden">
+      <h2 id="h-stores">stores</h2>
+      <div class="store" id="row-food"><span class="nm">food</span><span><span class="val" id="foodVal">0.0</span><span class="rate" id="foodRate"></span></span></div>
+      <div class="store hidden" id="row-wood"><span class="nm">wood</span><span><span class="val" id="woodVal">0.0</span><span class="rate" id="woodRate"></span></span></div>
+      <div class="store hidden" id="row-stone"><span class="nm">stone</span><span><span class="val" id="stoneVal">0.0</span><span class="rate" id="stoneRate"></span></span></div>
+      <div class="store hidden" id="row-favor"><span class="nm">favor</span><span><span class="val" id="favorVal">0.0</span><span class="rate" id="favorRate"></span></span></div>
+    </section>
+  </div>
+
+  <div class="col" id="c2">
+    <section id="sec-village" class="hidden">
+      <h2 id="h-village">the village</h2>
+      <div id="popLine"></div>
+      <div class="job ghost" id="job-f"><span class="jname">forager</span><span class="jn" id="jn-f">0</span><button class="jb" id="jm-f" aria-label="fewer foragers">−</button><button class="jb" id="jp-f" aria-label="more foragers">+</button></div>
+      <div class="job ghost" id="job-w"><span class="jname">woodcutter</span><span class="jn" id="jn-w">0</span><button class="jb" id="jm-w" aria-label="fewer woodcutters">−</button><button class="jb" id="jp-w" aria-label="more woodcutters">+</button></div>
+      <div class="job ghost" id="job-m"><span class="jname">mason</span><span class="jn" id="jn-m">0</span><button class="jb" id="jm-m" aria-label="fewer masons">−</button><button class="jb" id="jp-m" aria-label="more masons">+</button></div>
+      <div class="job ghost" id="job-p"><span class="jname">priest</span><span class="jn" id="jn-p">0</span><button class="jb" id="jm-p" aria-label="fewer priests">−</button><button class="jb" id="jp-p" aria-label="more priests">+</button></div>
+    </section>
+    <section id="sec-bld" class="hidden">
+      <h2 id="h-bld">works</h2>
+      <div id="bldList"></div>
+    </section>
+  </div>
+
+  <div class="col" id="c3">
+    <section id="sec-proj" class="hidden">
+      <h2 id="h-proj">undertakings</h2>
+      <div id="projList"></div>
+    </section>
+    <section id="sec-shrine" class="hidden">
+      <h2 id="h-shrine">the shrine</h2>
+      <button id="offer"></button>
+      <div class="tease" id="shrineTease"></div>
+      <div id="surgeLine"></div>
+    </section>
+    <section id="sec-mir" class="hidden">
+      <h2 id="h-mir">miracles</h2>
+      <div id="mirList"></div>
+    </section>
+  </div>
+</div>
+<div id="field"><canvas id="scene"></canvas></div>
+</div>
+
+<script>
+"use strict";
+/* ============================== content ============================== */
+
+const SAVE_KEY = "tithe-save";
+const SAVE_VER = 1;
+
+const CURS = ["food","wood","stone","favor"];
+const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"totalFavor" };
+
+const ACTS = [
+  { id:"berries", cur:"food",            el:"act-berries" },
+  { id:"wood",    cur:"wood", show:s=>s.totalFood>=3, el:"act-wood" },
+];
+
+const JOBS = [
+  { id:"f", name:"forager",    base:0.5,  out:"food",  show:s=>s.pop>0 },
+  { id:"w", name:"woodcutter", base:0.35, out:"wood",  show:s=>s.pop>0 },
+  { id:"m", name:"mason",      base:0.25, out:"stone", show:s=>s.bld.quarry>0 },
+  { id:"p", name:"priest",     base:0.2,  out:"favor", eats:2, show:s=>s.turn1 },
+];
+
+const BLD = [
+  { id:"hut",    name:"hut",    flavor:"room for two more.",            cost:{wood:12}, rate:1.3,  eff:{cap:2},               show:s=>s.proj.fire,    sprite:"hut" },
+  { id:"farm",   name:"farm",   flavor:"rows in the dirt.",             cost:{wood:25}, rate:1.18, eff:{job:"f", per:0.25},   show:s=>s.pop>=2,       sprite:"farm" },
+  { id:"quarry", name:"quarry", flavor:"the hill opens.",               cost:{wood:60}, rate:1.18, eff:{job:"m", per:0.25},   show:s=>s.bld.farm>=1,  sprite:"adit" },
+  { id:"sawpit", name:"sawpit", flavor:"the logs come apart easier.",   cost:{wood:50,stone:15}, rate:1.18, eff:{job:"w", per:0.25}, show:s=>s.bld.quarry>=1, sprite:"sawpit" },
+];
+
+const PROJ = [
+  { id:"fire",    name:"a fire",             flavor:"the cold backs off a step.",  cost:{wood:10},           done:"lit",  show:s=>s.totalWood>=6 },
+  { id:"tools",   name:"stone tools",        flavor:"flint edges.",                cost:{wood:30,stone:10},  done:"made", show:s=>s.totalStone>=3, eff:{allJobs:1.5} },
+  { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:90,wood:60}, done:"open", show:s=>s.totalStone>=150 },
+  { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:null, show:s=>s.mir.obedience },
+];
+
+const MIR = [
+  { id:"goodyear",  name:"a good year", flavor:"the rain falls when asked.", cost:{favor:25}, done:"granted", eff:{out:"food",  x:2}, show:s=>s.turn1 },
+  { id:"obedience", name:"obedience",   flavor:"no one wonders anymore.",    cost:{favor:60}, done:"granted", eff:{out:"favor", x:2}, show:s=>s.mir.goodyear },
+];
+
+const LEX = [
+  { id:"h-act",     pre:"actions",     post:"answers" },
+  { id:"h-village", pre:"the village", post:"the flock" },
+  { id:"popWord",   pre:"villagers",   post:"stock" },
+];
+
+const NAMES = ["mara","aldo","edda","bram","sela","otto","wren","hale","ivo","june",
+  "pell","rook","tam","ulf","vesta","wim","yara","ash","bryn","cole",
+  "dove","eli","fenn","gull","hart","ida","jory","kell","lark","moss",
+  "nan","orla","pike","quill","rue","sorrel","teal","una","vail","webb",
+  "finch","greta","hugh","iris","jonas","kit","lena","pim"];
+
+/* red spreads at sacrifice thresholds: offerings reached -> selector tinted */
+const SPREAD = [
+  { at:1,  sel:"#h-shrine" },
+  { at:2,  sel:"#favorVal" },
+  { at:4,  sel:".rate" },
+  { at:7,  sel:"h2" },
+  { at:10, sel:".store .nm" },
+];
+
+const UPKEEP   = 0.25;                 // food/s per villager; priests eat double
+const ARRIVE   = { base:15, rate:1.3 };// food stock that draws the next villager
+const LEAVE_S  = 20;                   // seconds at zero food before one walks away
+const SURGE    = { x:8, s:90 };        // the offering's gift
+const OFFER    = { base:5, rate:1.5 }; // favor yield per offering
+const CAP_HUT  = 2;
+const OFFLINE_CAP_S = 3600;
+const FIG_MAX  = 24;
+
+/* field anchors (12 rows x 96 cols over the canvas) */
+const ANCHORS = {
+  fire:   { col:48, row:9.6 },
+  huts:   [{col:40,row:9},{col:44,row:8.6},{col:52,row:9},{col:56,row:8.6},{col:37,row:8.4}],
+  farms:  [{col:28,row:10.2},{col:32,row:10.6},{col:25,row:10.8}],
+  sawpit: { col:17, row:9.4 },
+  adit:   { col:75, row:8.2 },
+  hollow: { col:84, row:6.4 },
+};
+const SITES = {  /* where each job walks to */
+  f:{col:29,row:10.8}, w:{col:13,row:10}, m:{col:77,row:8.8},
+  p:{col:84.5,row:7.4}, i:{col:49.5,row:10.2},
+};
+
+/* ============================== state ============================== */
+
+function fresh() {
+  return {
+    v:SAVE_VER, seed:(Math.random()*2147483647)|0, last:Date.now(),
+    food:0, wood:0, stone:0, favor:0,
+    totalFood:0, totalWood:0, totalStone:0, totalFavor:0,
+    pop:0, jobs:{f:0,w:0,m:0,p:0},
+    bld:{hut:0,farm:0,quarry:0,sawpit:0},
+    proj:{}, mir:{},
+    offerings:0, nameIdx:0, surgeUntil:0, turn1:false, glowLock:0,
+    starveT:0, clicks:0, walkPhase:0, smokePhase:0,
+    seen:{},
+  };
+}
+
+function migrate(raw) {
+  const f = fresh(), s = {};
+  for (const k of Object.keys(f)) {
+    s[k] = (raw && typeof raw[k] === typeof f[k] && raw[k] !== null) ? raw[k] : f[k];
+  }
+  for (const k of Object.keys(f.jobs)) if (typeof s.jobs[k] !== "number") s.jobs[k] = 0;
+  for (const k of Object.keys(f.bld))  if (typeof s.bld[k]  !== "number") s.bld[k]  = 0;
+  s.v = SAVE_VER;
+  return s;
+}
+
+let S;
+try {
+  const raw = localStorage.getItem(SAVE_KEY);
+  S = raw ? migrate(JSON.parse(raw)) : fresh();
+} catch (e) { S = fresh(); }
+
+/* ============================== prng / names ============================== */
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const nameOrder = (function () {
+  const a = NAMES.map((_, i) => i);
+  const r = mulberry32(S.seed ^ 0x51ed270b);
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+})();
+const nextName = () => NAMES[nameOrder[S.nameIdx % NAMES.length]];
+
+/* ============================== formatting ============================== */
+
+const fmt = n => {
+  if (!isFinite(n)) return "0";
+  const a = Math.abs(n);
+  if (a >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,"") + "m";
+  if (a >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,"") + "k";
+  return String(Math.floor(n));
+};
+const fmtStore = n => n < 1000 ? n.toFixed(1) : fmt(n);
+const fmtRate = n => {
+  const a = Math.abs(n);
+  const body = a < 1 ? a.toFixed(2) : a < 10 ? a.toFixed(1) : fmt(a);
+  return (n < 0 ? "-" : "+") + body + "/s";
+};
+
+/* ============================== economy ============================== */
+
+const surgeMult = () => Date.now() < S.surgeUntil ? SURGE.x : 1;
+const mirMult = out => MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.out===out ? u.eff.x : 1), 1);
+const projAllJobs = () => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff.allJobs ? p.eff.allJobs : 1), 1);
+const bldJobMult = j => BLD.reduce((m,b)=> m * (b.eff && b.eff.job===j ? 1 + b.eff.per*(S.bld[b.id]||0) : 1), 1);
+
+const jobRate = j => {
+  const def = JOBS.find(x=>x.id===j);
+  return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * surgeMult();
+};
+const prodOf = cur => JOBS.reduce((t,jd)=> t + (jd.out===cur ? jobRate(jd.id) : 0), 0);
+const upkeep = () => (S.pop + S.jobs.p * ((JOBS.find(j=>j.id==="p").eats||1) - 1)) * UPKEEP;
+const rateOf = cur => prodOf(cur) - (cur==="food" ? upkeep() : 0);
+const totalProd = () => prodOf("food") + prodOf("wood") + prodOf("stone");
+
+const cap = () => S.bld.hut * CAP_HUT;
+const idle = () => S.pop - S.jobs.f - S.jobs.w - S.jobs.m - S.jobs.p;
+const arriveAt = () => ARRIVE.base * Math.pow(ARRIVE.rate, S.pop);
+const offerYield = () => OFFER.base * Math.pow(OFFER.rate, S.offerings);
+const capS = () => OFFLINE_CAP_S;
+const clickPower = () => 1;
+
+const bldCost = b => {
+  const c = {};
+  for (const k of Object.keys(b.cost)) c[k] = Math.ceil(b.cost[k] * Math.pow(b.rate, S.bld[b.id]||0));
+  return c;
+};
+const canAfford = cost => !!cost && Object.keys(cost).every(k => S[k] >= cost[k]);
+const pay = cost => { for (const k of Object.keys(cost)) S[k] -= cost[k]; };
+const costText = cost => cost ? Object.keys(cost).map(k => fmt(cost[k]) + " " + k).join(" + ") : "soon";
+
+const smokeRate = () => 0.5 + 1.2 * Math.log10(1 + Math.max(0, totalProd()));
+const glowT = () => {
+  const g = Math.min(1, Math.log10(1 + S.totalFood + S.totalWood + S.totalStone) / 4);
+  return S.turn1 ? Math.min(g, S.glowLock) : g;
+};
+const redT = () => S.turn1 ? Math.min(1, Math.log10(1 + S.totalFavor) / 3) : 0;
+
+/* ============================== motion ============================== */
+
+const REDUCED = typeof matchMedia === "function" &&
+  matchMedia("(prefers-reduced-motion: reduce)").matches;
+const motionOK = () => !REDUCED;
+
+/* ============================== field: generation ============================== */
+
+function genVillage(seed) {
+  const r = mulberry32(seed);              /* FROZEN CALL ORDER — never reorder */
+  const stars = [];
+  for (let i = 0; i < 14; i++) stars.push({ col:r()*96, row:r()*3.4 });
+  const hor = [];
+  for (let i = 0; i < 6; i++) hor.push({ c0:i*12, c1:i*12+12, row:5.7 + r()*0.7 });
+  const trunks = [];
+  for (let i = 0; i < 8; i++) trunks.push({ col:2 + i*2.4 + r()*0.8, top:6.3 + r()*0.8, h:2.6 + r()*0.9 });
+  const canopy = [];
+  for (let i = 0; i < 7; i++) canopy.push({ col:1 + i*2.8 + r()*0.9, row:5.2 + r()*0.9, w:3.2 + r()*1.4, h:1.4 + r()*0.8 });
+  const tufts = [];
+  for (let i = 0; i < 18; i++) tufts.push({ col:22 + r()*48, row:8.2 + r()*3.4 });
+  const rocks = [];
+  for (let i = 0; i < 6; i++) rocks.push({ col:72 + i*3.6 + r()*1.2, row:5.2 + r()*2.6, w:2.2 + r()*1.6, h:1.1 + r()*0.9 });
+  const flecks = [];
+  for (let i = 0; i < 30; i++) flecks.push({ dc:(r()-0.5)*5.5, dr:0.5 + r()*1.1 });
+  return { stars, hor, trunks, canopy, tufts, rocks, flecks };
+}
+const ISLAND = null; /* (family name kept off — this game has a field) */
+let FIELDG = genVillage(S.seed);
+
+/* ============================== field: scene (pure data) ============================== */
+
+function tri01(t) { t = ((t % 1) + 1) % 1; return t < 0.5 ? t * 2 : 2 - t * 2; }
+
+function assignFigures() {
+  /* deterministic: figure k's job from the allocation, walk from (k, phase) */
+  const list = [];
+  const order = ["f","w","m","p"];
+  for (const j of order) for (let i = 0; i < S.jobs[j]; i++) list.push(j);
+  const idl = idle();
+  for (let i = 0; i < idl; i++) list.push("i");
+  return list.slice(0, FIG_MAX);
+}
+
+function villageScene() {
+  const builds = [];
+  for (let i = 0; i < Math.min(S.bld.hut, ANCHORS.huts.length); i++)
+    builds.push({ sprite:"hut", col:ANCHORS.huts[i].col, row:ANCHORS.huts[i].row });
+  for (let i = 0; i < Math.min(S.bld.farm, ANCHORS.farms.length); i++)
+    builds.push({ sprite:"farm", col:ANCHORS.farms[i].col, row:ANCHORS.farms[i].row });
+  if (S.bld.quarry > 0) builds.push({ sprite:"adit", col:ANCHORS.adit.col, row:ANCHORS.adit.row });
+  if (S.bld.sawpit > 0) builds.push({ sprite:"sawpit", col:ANCHORS.sawpit.col, row:ANCHORS.sawpit.row });
+  if (S.proj.fire) builds.push({ sprite:"fire", col:ANCHORS.fire.col, row:ANCHORS.fire.row });
+  const hollow = !S.proj.shrineX && (S.seen["p:shrineX"] || S.totalStone >= 150);
+  if (hollow) builds.push({ sprite:"hollow", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
+  if (S.proj.shrineX) builds.push({ sprite:"shrine", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
+
+  const flecks = [];
+  const n = Math.min(S.offerings, FIELDG.flecks.length);
+  for (let i = 0; i < n; i++) flecks.push({
+    col: ANCHORS.hollow.col + FIELDG.flecks[i].dc,
+    row: ANCHORS.hollow.row + FIELDG.flecks[i].dr,
+  });
+
+  const figures = [];
+  const roster = assignFigures();
+  const hutN = Math.max(1, Math.min(S.bld.hut, ANCHORS.huts.length));
+  for (let k = 0; k < roster.length; k++) {
+    const j = roster[k];
+    const home = ANCHORS.huts[k % hutN] || ANCHORS.fire;
+    const site = SITES[j];
+    const jit = ((k * 1.7) % 4) - 2;
+    const u = motionOK() ? tri01(S.walkPhase * 0.12 + k * 0.37) : 1;
+    figures.push({
+      job: j,
+      col: home.col + (site.col + jit - home.col) * u,
+      row: (home.row + 0.7) + (site.row - home.row - 0.7) * u,
+    });
+  }
+
+  const smoke = [];
+  if (S.proj.fire) {
+    const a = ANCHORS.fire, lo = a.row - 0.35, span = lo - 1.2;
+    for (let i = 0; i < 3; i++) {
+      const o = ((S.smokePhase * 0.5 + i / 3) % 1) * span;
+      smoke.push({ col: a.col + Math.sin((S.smokePhase + i * 2.1)) * 0.6, row: lo - o });
+    }
+  }
+
+  return { g: glowT(), r: redT(), builds, figures, flecks, smoke };
+}
+
+/* ============================== field: painter ============================== */
+
+const cv = document.getElementById("scene");
+let ctx = null;
+try { ctx = cv.getContext && cv.getContext("2d"); } catch (e) { ctx = null; }
+
+const mix = (a, b, t) => {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  let out = "#";
+  for (const sh of [16, 8, 0]) {
+    const v = Math.round(((pa >> sh & 255) * (1 - t)) + ((pb >> sh & 255) * t));
+    out += v.toString(16).padStart(2, "0");
+  }
+  return out;
+};
+
+const PAL = {
+  skyLo:"#12100d", skyHi:"#262017", skyRed:"#26110c",
+  hill:"#181511", hillRed:"#1d120d",
+  meadow:"#1b1916", tuft:"#15130f",
+  tree:"#20231c", trunk:"#16140f",
+  rock:"#2c2822", rockHi:"#363026",
+  build:"#0b0a08", fig:"#b6ad9c", figP:"#a14034",
+  fire:"#d9c9a0", smoke:"#6f6a5e", fleck:"#a14034",
+  star:"#5a5345", hollow:"#060504",
+};
+
+let paintKey = "";
+function paint() {
+  if (!ctx) return;
+  const dpr = (typeof devicePixelRatio === "number" ? devicePixelRatio : 1) || 1;
+  const cw = cv.clientWidth, chh = cv.clientHeight;
+  if (!cw || !chh) return;
+  const sc = villageScene();
+  const key = [sc.g.toFixed(2), sc.r.toFixed(2),
+    sc.builds.map(b=>b.sprite+b.col).join(","), sc.flecks.length,
+    sc.figures.map(f=>(f.col).toFixed(1)+","+(f.row).toFixed(1)).join(";"),
+    sc.smoke.map(s=>s.row.toFixed(1)).join(","), cw, chh].join("|");
+  if (key === paintKey) return;
+  paintKey = key;
+
+  if (cv.width !== cw * dpr) cv.width = cw * dpr;
+  if (cv.height !== chh * dpr) cv.height = chh * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const X = c => c / 96 * cw, Y = r => r / 12 * chh;
+
+  /* sky */
+  let sky = mix(PAL.skyLo, PAL.skyHi, sc.g);
+  if (sc.r > 0) sky = mix(sky, PAL.skyRed, sc.r);
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, cw, chh);
+  ctx.fillStyle = PAL.star;
+  for (const st of FIELDG.stars) ctx.fillRect(X(st.col), Y(st.row), 1.5, 1.5);
+
+  /* hills + quarry hill mass */
+  let hill = sc.r > 0 ? mix(PAL.hill, PAL.hillRed, sc.r) : PAL.hill;
+  ctx.fillStyle = hill;
+  for (const h of FIELDG.hor) ctx.fillRect(X(h.c0), Y(h.row), X(h.c1 - h.c0) + 1, chh);
+  ctx.beginPath();
+  ctx.moveTo(X(70), Y(6.4)); ctx.lineTo(X(80), Y(4.4)); ctx.lineTo(X(96), Y(3.9));
+  ctx.lineTo(X(96), chh); ctx.lineTo(X(70), chh); ctx.closePath(); ctx.fill();
+
+  /* meadow */
+  ctx.fillStyle = PAL.meadow; ctx.fillRect(0, Y(7.6), cw, chh);
+  ctx.fillStyle = PAL.tuft;
+  for (const t of FIELDG.tufts) ctx.fillRect(X(t.col), Y(t.row), 2.5, 1.5);
+
+  /* treeline (left) */
+  ctx.fillStyle = PAL.trunk;
+  for (const t of FIELDG.trunks) ctx.fillRect(X(t.col), Y(t.top), 2, Y(t.h) - Y(0));
+  ctx.fillStyle = PAL.tree;
+  for (const c of FIELDG.canopy) ctx.fillRect(X(c.col), Y(c.row), X(c.w) - X(0), Y(c.h) - Y(0));
+
+  /* quarry face */
+  for (let i = 0; i < FIELDG.rocks.length; i++) {
+    ctx.fillStyle = i % 2 ? PAL.rock : PAL.rockHi;
+    const rk = FIELDG.rocks[i];
+    ctx.fillRect(X(rk.col), Y(rk.row), X(rk.w) - X(0), Y(rk.h) - Y(0));
+  }
+
+  /* builds */
+  for (const b of sc.builds) drawSprite(b, cw, chh, X, Y);
+
+  /* flecks — the picture remembers */
+  ctx.fillStyle = PAL.fleck;
+  for (const f of sc.flecks) ctx.fillRect(X(f.col), Y(f.row), 2, 2);
+
+  /* figures */
+  for (const f of sc.figures) {
+    ctx.fillStyle = f.job === "p" ? PAL.figP : PAL.fig;
+    const fx = X(f.col), fy = Y(f.row);
+    ctx.fillRect(fx, fy - 5, 2, 5);
+    ctx.fillRect(fx - 0.5, fy - 7, 3, 2);
+  }
+
+  /* smoke */
+  ctx.fillStyle = PAL.smoke;
+  for (const s of sc.smoke) ctx.fillRect(X(s.col), Y(s.row), 2, 2);
+}
+
+function drawSprite(b, cw, chh, X, Y) {
+  const x = X(b.col), y = Y(b.row);
+  ctx.fillStyle = PAL.build;
+  if (b.sprite === "hut") {
+    ctx.beginPath();
+    ctx.moveTo(x - 7, y + 6); ctx.lineTo(x, y - 6); ctx.lineTo(x + 7, y + 6);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 1.5, y + 1, 3, 5);
+  } else if (b.sprite === "farm") {
+    for (let i = 0; i < 3; i++) ctx.fillRect(x + i * 5 - 5, y, 4, 2);
+  } else if (b.sprite === "sawpit") {
+    ctx.fillRect(x - 6, y + 2, 12, 2);
+    ctx.fillRect(x - 4, y - 3, 2, 7);
+    ctx.fillRect(x + 2, y - 5, 2, 9);
+  } else if (b.sprite === "adit") {
+    ctx.fillRect(x - 4, y - 4, 8, 8);
+    ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 2, y - 1, 4, 5);
+  } else if (b.sprite === "fire") {
+    ctx.fillStyle = PAL.fire; ctx.fillRect(x - 2, y - 3, 4, 3);
+    ctx.fillStyle = PAL.build;
+    ctx.fillRect(x - 5, y, 10, 1.5);
+  } else if (b.sprite === "hollow") {
+    ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 3, y - 4, 6, 7);
+  } else if (b.sprite === "shrine") {
+    ctx.fillRect(x - 2, y - 9, 4, 12);
+    ctx.fillRect(x - 5, y - 7, 10, 2);
+    if (S.totalFavor > 0) { ctx.fillStyle = PAL.fleck; ctx.fillRect(x - 1, y - 8.5, 2, 1.5); }
+  }
+}
+
+/* ============================== dom ============================== */
+
+const $ = id => document.getElementById(id);
+const els = {};
+["sec-stores","sec-village","sec-bld","sec-proj","sec-shrine","sec-mir",
+ "h-act","h-village","popLine","offer","shrineTease","surgeLine",
+ "foodVal","foodRate","woodVal","woodRate","stoneVal","stoneRate","favorVal","favorRate",
+ "row-food","row-wood","row-stone","row-favor","bldList","projList","mirList",
+ "act-berries","act-wood"].forEach(id => els[id] = $(id));
+JOBS.forEach(j => { els["job-"+j.id]=$("job-"+j.id); els["jn-"+j.id]=$("jn-"+j.id);
+  els["jp-"+j.id]=$("jp-"+j.id); els["jm-"+j.id]=$("jm-"+j.id); });
+
+const rowNodes = {};   /* id -> {btn, nm, ct, co, tease} for BLD/PROJ/MIR */
+
+function makeRow(def, kind) {
+  const wrap = document.createElement("div");
+  const btn = document.createElement("button");
+  btn.className = "gen"; btn.id = kind + "-" + def.id;
+  const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = def.name;
+  const ct = document.createElement("span"); ct.className = "ct";
+  const co = document.createElement("span"); co.className = "co";
+  btn.appendChild(nm); btn.appendChild(ct); btn.appendChild(co);
+  const tease = document.createElement("div"); tease.className = "tease";
+  tease.textContent = def.flavor || "";
+  wrap.appendChild(btn); wrap.appendChild(tease);
+  rowNodes[kind + "-" + def.id] = { btn, nm, ct, co, tease, def, kind };
+  btn.addEventListener("click", () => {
+    if (kind === "bld") buyBld(def);
+    else if (kind === "proj") buyProj(def);
+    else if (kind === "mir") buyMir(def);
+  });
+  return wrap;
+}
+
+/* ============================== purchases ============================== */
+
+function fixJobs() {
+  const order = ["f","w","m","p"];
+  while (S.jobs.f + S.jobs.w + S.jobs.m + S.jobs.p > S.pop) {
+    let big = order[0];
+    for (const j of order) if (S.jobs[j] > S.jobs[big]) big = j;
+    if (S.jobs[big] > 0) S.jobs[big]--; else break;
+  }
+}
+
+function buyBld(def) {
+  const c = bldCost(def);
+  if (!canAfford(c)) return;
+  pay(c); S.bld[def.id]++;
+  render(); save();
+}
+function buyProj(def) {
+  if (S.proj[def.id] || !def.cost || !canAfford(def.cost)) return;
+  pay(def.cost); S.proj[def.id] = true;
+  render(); save();
+}
+function buyMir(def) {
+  if (S.mir[def.id] || !canAfford(def.cost)) return;
+  pay(def.cost); S.mir[def.id] = true;
+  render(); save();
+}
+
+function doOffering() {
+  if (S.pop < 1) return;
+  S.pop--; fixJobs();
+  const y = offerYield();
+  S.favor += y; S.totalFavor += y;
+  S.offerings++; S.nameIdx++;
+  S.surgeUntil = Date.now() + SURGE.s * 1000;
+  if (!S.turn1) {
+    S.turn1 = true;
+    S.glowLock = Math.min(1, Math.log10(1 + S.totalFood + S.totalWood + S.totalStone) / 4);
+  }
+  render(); save();
+}
+
+function doAct(a) {
+  S[a.cur] += clickPower();
+  S[TOT[a.cur]] += clickPower();
+  S.clicks++;
+  if (S.proj.fire) S.smokePhase += 0.5;
+  S.walkPhase += 0.15;
+  render();
+}
+
+/* ============================== reveal engine ============================== */
+
+let booted = false;
+function see(key, el, ghost) {
+  if (!el) return;
+  const cls = ghost ? "ghost" : "hidden";
+  if (!el.classList.contains(cls)) return;
+  el.classList.remove(cls);
+  if (booted && !S.seen[key]) el.classList.add("reveal");
+  S.seen[key] = 1;
+}
+
+function checkReveals() {
+  if (S.clicks >= 1 || S.totalFood > 0) see("stores", els["sec-stores"]);
+  if (S.totalWood > 0) see("row-wood", els["row-wood"]);
+  if (S.totalStone > 0) see("row-stone", els["row-stone"]);
+  if (S.turn1) see("row-favor", els["row-favor"]);
+  for (const a of ACTS) if (a.show && (S.seen["a:"+a.id] || a.show(S))) see("a:"+a.id, els[a.el], true);
+  if (S.pop > 0) see("village", els["sec-village"]);
+  for (const j of JOBS) if (S.seen["j:"+j.id] || j.show(S)) see("j:"+j.id, els["job-"+j.id], true);
+
+  for (const def of PROJ) {
+    if (!S.seen["pp:"+def.id] && (def.show ? def.show(S) : true)) {
+      see("proj", els["sec-proj"]);
+      els["projList"].appendChild(makeRow(def, "proj"));
+      S.seen["pp:"+def.id] = 1;
+      if (booted) rowNodes["proj-"+def.id].btn.classList.add("reveal");
+    }
+    if (def.id === "shrineX" && (S.totalStone >= 150 || S.seen["pp:shrineX"])) S.seen["p:shrineX"] = 1;
+  }
+  for (const def of BLD) {
+    if (!S.seen["bb:"+def.id] && def.show(S)) {
+      see("bld", els["sec-bld"]);
+      els["bldList"].appendChild(makeRow(def, "bld"));
+      S.seen["bb:"+def.id] = 1;
+      if (booted) rowNodes["bld-"+def.id].btn.classList.add("reveal");
+    }
+  }
+  for (const def of MIR) {
+    if (!S.seen["mm:"+def.id] && def.show(S)) {
+      see("mir", els["sec-mir"]);
+      els["mirList"].appendChild(makeRow(def, "mir"));
+      S.seen["mm:"+def.id] = 1;
+      if (booted) rowNodes["mir-"+def.id].btn.classList.add("reveal");
+    }
+  }
+  if (S.proj.shrineX) see("shrine", els["sec-shrine"]);
+}
+
+/* ============================== render ============================== */
+
+const lex = id => { const l = LEX.find(x=>x.id===id); return l ? (S.turn1 ? l.post : l.pre) : ""; };
+let lastSpread = -1;
+
+function setText(el, txt) { if (el && el.textContent !== txt) el.textContent = txt; }
+
+function render() {
+  checkReveals();
+
+  setText(els["foodVal"], fmtStore(S.food));
+  setText(els["woodVal"], fmtStore(S.wood));
+  setText(els["stoneVal"], fmtStore(S.stone));
+  setText(els["favorVal"], fmtStore(S.favor));
+  setText(els["foodRate"], (S.pop > 0 || prodOf("food") > 0) ? fmtRate(rateOf("food")) : "");
+  setText(els["woodRate"], prodOf("wood") > 0 ? fmtRate(rateOf("wood")) : "");
+  setText(els["stoneRate"], prodOf("stone") > 0 ? fmtRate(rateOf("stone")) : "");
+  setText(els["favorRate"], prodOf("favor") > 0 ? fmtRate(rateOf("favor")) : "");
+
+  setText(els["h-act"], lex("h-act"));
+  setText(els["h-village"], lex("h-village"));
+  setText(els["popLine"], lex("popWord") + " " + S.pop + " / " + cap() + " · idle " + idle());
+
+  for (const j of JOBS) {
+    setText(els["jn-"+j.id], String(S.jobs[j.id]));
+    els["jp-"+j.id].disabled = idle() < 1;
+    els["jm-"+j.id].disabled = S.jobs[j.id] < 1;
+  }
+
+  for (const key of Object.keys(rowNodes)) {
+    const r = rowNodes[key], def = r.def;
+    if (r.kind === "bld") {
+      const c = bldCost(def);
+      setText(r.ct, S.bld[def.id] > 0 ? String(S.bld[def.id]) : "");
+      setText(r.co, costText(c));
+      r.btn.disabled = !canAfford(c);
+      if (S.bld[def.id] > 0 && r.tease.textContent) setText(r.tease, "");
+    } else {
+      const done = r.kind === "proj" ? S.proj[def.id] : S.mir[def.id];
+      setText(r.ct, "");
+      setText(r.co, done ? (def.done || "done") : costText(def.cost));
+      r.btn.disabled = done || !def.cost || !canAfford(def.cost);
+      if (done) setText(r.tease, "");
+    }
+  }
+
+  if (S.seen["shrine"]) {
+    setText(els["offer"], "an offering — " + nextName());
+    els["offer"].disabled = S.pop < 1;
+    setText(els["shrineTease"], S.turn1 ? "they were never your hands." : "it was waiting.");
+    const left = Math.ceil((S.surgeUntil - Date.now()) / 1000);
+    setText(els["surgeLine"], left > 0 ? "the air hums · " + left + "s" : "");
+  }
+
+  if (S.offerings !== lastSpread) {
+    lastSpread = S.offerings;
+    for (const sp of SPREAD) if (S.offerings >= sp.at)
+      document.querySelectorAll(sp.sel).forEach(n => n.classList.add("blood"));
+  }
+
+  paint();
+}
+
+/* ============================== tick ============================== */
+
+function tick() {
+  const now = Date.now();
+  let dt = (now - S.last) / 1000;
+  S.last = now;
+  if (dt <= 0) return;
+  if (dt > capS()) dt = capS();
+
+  if (motionOK()) {
+    S.walkPhase += dt * (surgeMult() > 1 ? 2.2 : 1);
+    S.smokePhase += dt * smokeRate() * 0.4;
+  }
+
+  for (const cur of CURS) {
+    const p = prodOf(cur);
+    if (p > 0) { S[cur] += p * dt; S[TOT[cur]] += p * dt; }
+  }
+  if (S.pop > 0 || S.jobs.p > 0) S.food = Math.max(0, S.food - upkeep() * dt);
+
+  /* arrivals: the fire draws them; the food keeps them */
+  if (S.proj.fire && S.pop < cap() && S.food >= arriveAt()) {
+    S.pop++;
+  }
+
+  /* an empty larder: one walks into the treeline (never dies) */
+  if (S.pop > 0 && S.food <= 0 && upkeep() > prodOf("food")) {
+    S.starveT += dt;
+    if (S.starveT >= LEAVE_S) { S.pop--; fixJobs(); S.starveT = 0; }
+  } else if (S.food > 0) S.starveT = 0;
+
+  render();
+}
+
+/* ============================== save / load ============================== */
+
+function save() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {}
+}
+function wipe() {
+  if (!confirm("wipe the save?")) return;
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  location.reload();
+}
+function doExport() {
+  try { prompt("copy this:", btoa(JSON.stringify(S))); } catch (e) {}
+}
+function doImport() {
+  try {
+    const p = prompt("paste a save:");
+    if (!p) return;
+    const parsed = migrate(JSON.parse(atob(p.trim())));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(parsed));
+    location.reload();
+  } catch (e) {}
+}
+
+/* ============================== wiring ============================== */
+
+els["act-berries"].addEventListener("click", () => doAct(ACTS[0]));
+els["act-wood"].addEventListener("click", () => doAct(ACTS[1]));
+els["offer"].addEventListener("click", doOffering);
+for (const j of JOBS) {
+  els["jp-"+j.id].addEventListener("click", () => { if (idle() > 0) { S.jobs[j.id]++; render(); } });
+  els["jm-"+j.id].addEventListener("click", () => { if (S.jobs[j.id] > 0) { S.jobs[j.id]--; render(); } });
+}
+$("mSave").addEventListener("click", e => { e.preventDefault(); save(); });
+$("mExport").addEventListener("click", e => { e.preventDefault(); doExport(); });
+$("mImport").addEventListener("click", e => { e.preventDefault(); doImport(); });
+$("mWipe").addEventListener("click", e => { e.preventDefault(); wipe(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
+window.addEventListener("beforeunload", save);
+window.addEventListener("resize", () => { paintKey = ""; paint(); });
+
+/* offline catch-up happens through the same clamp in tick() */
+render();
+booted = true;
+setInterval(tick, 100);
+setInterval(save, 10000);
+
+/* ============================== debug handle ============================== */
+
+window.__tithe = {
+  get state() { return S; },
+  tick, render, save, migrate, fresh,
+  JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, ANCHORS, SITES, PAL,
+  UPKEEP, ARRIVE, SURGE, OFFER, LEAVE_S,
+  buyBld, buyProj, buyMir, doOffering, fixJobs,
+  jobRate, prodOf, rateOf, upkeep, totalProd, cap, idle, arriveAt, offerYield,
+  bldCost, canAfford, costText, surgeMult, capS, clickPower,
+  smokeRate, glowT, redT, nextName,
+  genVillage, villageScene, fmt, fmtStore, fmtRate, mulberry32,
+};
+</script>
+</body>
+</html>

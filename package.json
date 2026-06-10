@@ -1,0 +1,13 @@
+{
+  "name": "tithe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A single-file survival incremental that curdles into a god game. The field is the log.",
+  "scripts": {
+    "test": "node tools/test-tithe.js",
+    "pace": "node tools/pace-sim.js"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
