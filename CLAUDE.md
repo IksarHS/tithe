@@ -48,7 +48,13 @@ scroll. Two regions, both reserved from boot:
    the granary will raise it). Summarized by the field, never in prose.
 7. **Reveal engine is the reward system.** Everything starts hidden; condition
    predicates un-hide once, persisted in `seen`, ~0.7s fade. First appearance
-   is an event — protect it.
+   is an event — protect it. **Carve-out (v3):** content may hide; mechanics
+   the player is actively waiting on may not — every stallable gate gets a
+   named threshold line. **The carrot rule:** from 0:30 to the last star each
+   active column holds exactly ONE visible-but-unaffordable priced row
+   (reveal at 60% affordability; 2 rungs early on exponential ladders) plus
+   at most one `horizon` row. If it costs, it forecasts; if it changes the
+   world for free, it may ambush.
 8. **Accessibility floor:** real `<button>`s, ≥44px targets, visible focus,
    `prefers-reduced-motion` kills all ambient motion (user-initiated frame
    advances stay), single column degrades gracefully — but the one-screen law
@@ -92,9 +98,13 @@ scroll. Two regions, both reserved from boot:
   emoji in UI, particle effects, dashboard palettes, scrollbars.
 - Monospace, all-lowercase, hairline rules, whitespace for hierarchy.
   Hidden > greyed-out > decorated.
-- Text sparingly: names, numbers, the picture. Flavor is a one-time tease,
-  replaced by the rate after first purchase. No exclamation marks, no jokes.
-  When in doubt, cut words.
+- Text sparingly: names, numbers, the picture. **The effect-tease law (v3):**
+  for any row with a mechanical effect, the effect line IS the tease — spec
+  before purchase, rate after. Flavor survives only on rows without effects
+  (story beats). No exclamation marks, no jokes. No second person outside
+  button verbs. Word budget: act 1 ≤ 50, act 2 ≤ 35, act 3 ≤ 16, ending ≤ 14.
+  The category-B atmosphere lines inventoried in DESIGN-V3 §8 are protected
+  from punch-up. When in doubt, cut words.
 
 ## Balance reference
 
@@ -103,12 +113,26 @@ scroll. Two regions, both reserved from boot:
 - Benchmarks (`npm run pace` after any constant change — keep the sim in sync):
   first villager < 60s; first building < 45s; the Hunger Wall is the ONLY
   allowed >3min flat stretch, with the offering visible the whole time; first
-  offering by bot < 8 min. The sim's bot clicks at 0.8/s — a relaxed human.
-  If a benchmark needs grinding to pass, the game is wrong, not the bot.
-- Works are capped at their field anchors (hut 5, farm 3, quarry 1, sawpit 1):
-  the ledger may never outgrow the picture. Arrivals are instant when food
-  crosses the bar; ONLY an offering leaves a gap on the road (the walk in from
-  the treeline is the wait, drawn on the field).
+  offering by bot < 8 min. If a benchmark needs grinding to pass, the game is
+  wrong, not the bot.
+- **Pace-sim v2 matrix (v3, binding):** three bots — Z (zero clicks after the
+  first offering; must COMPLETE the game), R (0.8 c/s, reference timings),
+  F (2.0 c/s, banded windows). Checks: zero-click completion; click share
+  ≤ 12% of lifetime food+wood; overtake (wood prod ≥ 8/s before 4:30, hand
+  ≤ 25% of automated rate from 4:00); policy spread ±20%; R90 (no ring gap
+  > 90s from 0:30 to the LAST STAR, Wall exempt); decision density ≥ 4/300s
+  pre-ascension, ≥ 2/300s after, never 0; carrot invariant; dial fairness
+  ±15%; broke-ascend probe; field-event density (a scene quantum changes
+  ≤ every 20s through ascension, ≤ every 30s in act 3). XFAIL ledger may
+  shrink only.
+- **The anchor law, amended (v3):** anchor COUNT capped forever (hut 5,
+  farm 3, quarry 1, sawpit 1, granary 1); each anchor may DEEPEN in level
+  (`S.lvl`), and the sprite must show the level at the same anchor. The
+  ledger never outgrows the picture; the picture gains depth, not sprawl.
+- **Arrivals walk (v3):** every arrival walks in from the treeline (6s);
+  `pop++` lands when the walk ends. ONLY an offering leaves a 20s gap on the
+  road. Starvation departures walk out. Comings and goings are the field's
+  sentences.
 
 ## Testing discipline
 
@@ -121,5 +145,7 @@ scroll. Two regions, both reserved from boot:
 
 ## State of the build
 
-- Prototype v1: act 1 + turn 1 + first taste of act 2 (priests, miracles),
-  `the tithe` teased. Acts 2–3 await the owner's playtest.
+- v2 complete (all 11 DESIGN-V2 milestones, `64fb8e5`). Owner playtest
+  verdict: the progression systems weren't satisfying — too much clicking,
+  blind buys, static field, disconnected systems. v3 (the machine) is the
+  revision: `docs/DESIGN-V3.md` is the contract; build order in its §9.
