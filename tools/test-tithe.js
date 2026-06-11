@@ -326,7 +326,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const G3 = boot(st2).window.__tithe;
   ok(G3.state.offerings === 0 && G3.state.turn1 === false && typeof G3.state.mir === "object",
     "a stripped save walks in with defaults");
-  ok(G3.state.v === 8, "version restamped");
+  ok(G3.state.v === G3.SAVE_VER, "version restamped");
 }
 {
   const st3 = { "tithe-save": "{broken" };
@@ -369,7 +369,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const stV = { "tithe-save": JSON.stringify(sv) };
   const GV = boot(stV).window.__tithe;
   ok(near(GV.state.surgeLeft, 30, 1.5), "a v1 stamp converts to seconds owed");
-  ok(GV.state.v === 8, "and leaves restamped");
+  ok(GV.state.v === GV.SAVE_VER, "and leaves restamped");
 }
 
 /* ---------- rats in the granary ---------- */
@@ -427,7 +427,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(GB.state.pop === 10, "the flock fits the huts");
   const JB = GB.state.jobs;
   ok(JB.f + JB.w + JB.m + JB.p <= GB.state.pop, "the jobs table follows the head count");
-  ok(GB.state.v === 8, "restamped v8");
+  ok(GB.state.v === GB.SAVE_VER, "restamped to the current version");
 }
 
 /* ---------- the spine: faith is born at the turn ---------- */
@@ -514,7 +514,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const GM = boot(stM).window.__tithe;
   ok(GM.state.favor === 400, "favor folds back under the cap (faith 2)");
   ok(GM.state.jobs.p === 2, "the priests fit the faith");
-  ok(GM.state.v === 8 && GM.state.universes === 1, "restamped v8; one universe, as always");
+  ok(GM.state.v === GM.SAVE_VER && GM.state.universes === 1, "restamped; one universe, as always");
 }
 
 /* ---------- the cultivator: arrivals, not the larder ---------- */
@@ -874,7 +874,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
 
   /* an old save learns the new fields */
   const mg = GH.migrate({ v:4, turn1:true, pop:4, bld:{hut:2}, deeper:2 });
-  ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === 8,
+  ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === GH.SAVE_VER,
     "an old save learns the new fields at their defaults");
 }
 
@@ -1172,7 +1172,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
 
   /* an old save learns the board's fields */
   const mgA = GA.migrate({ v:5, turn1:true, pop:4, bld:{hut:2} });
-  ok(mgA.heraldSeeds === 0 && mgA.worldProg === 0 && mgA.tithedLine === 0 && mgA.v === 8,
+  ok(mgA.heraldSeeds === 0 && mgA.worldProg === 0 && mgA.tithedLine === 0 && mgA.v === GA.SAVE_VER,
     "a v5 save learns the board at its defaults");
 
   /* the spelled suffixes (§7.1) */
@@ -1332,7 +1332,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   /* a v6 save meets the silence at its defaults */
   const mgS = GS2.migrate({ v:6, turn1:true, worlds:7, proj:{ ascend:true } });
   ok(mgS.silenceBorn === false && mgS.faint === 0 && mgS.silenceT === 0 &&
-     mgS.dimT === 0 && mgS.v === 8,
+     mgS.dimT === 0 && mgS.v === GS2.SAVE_VER,
     "a v6 save meets the silence at its defaults");
 }
 
@@ -1491,7 +1491,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   /* old saves keep their skies */
   const mgK = GK2.migrate({ v:6, turn1:true, galaxy:2, endState:1,
     proj:{ ascend:true, last:true } });
-  ok(mgK.galaxy === 2 && mgK.endState === 1 && mgK.proj.last === true && mgK.v === 8,
+  ok(mgK.galaxy === 2 && mgK.endState === 1 && mgK.proj.last === true && mgK.v === GK2.SAVE_VER,
     "a v6 save keeps its skies and its ending");
   const mgK5 = GK2.migrate({ v:5, turn1:true });
   ok(mgK5.galaxy === 0 && mgK5.endState === 0,
@@ -1562,16 +1562,15 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(hunB.parentElement.querySelector(".tease").textContent ===
      "begin again. the village will not remember. you will.",
     "the village will not remember. you will");
-  ok(!!stvB && stvB.disabled &&
+  ok(!!stvB && !stvB.disabled &&
      stvB.parentElement.querySelector(".tease").textContent === "refuse.",
-    "starve stands disabled, one word under it");
+    "starve stands lit, one word under it");
 
-  /* the voices are not bargains; the refusal is not answered yet */
+  /* the voices are not bargains */
   const seed0 = S9.seed;
   G9.buyProj(G9.PROJ.find(p => p.id === "sil"));
-  G9.buyProj(G9.PROJ.find(p => p.id === "starve"));
   ok(S9.universes === 1 && !("tithe-universe" in st9) && S9.seed === seed0,
-    "a voice is not a bargain; the refusal is not answered yet");
+    "a voice is not a bargain");
 
   /* hunger: the wipe that keeps one number */
   hunB.click();
@@ -1611,8 +1610,166 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   /* a v7 save arrives with the clock at zero */
   const mg9 = G92.migrate({ v:7, turn1:true, galaxy:2, endState:1,
     proj:{ ascend:true, last:true } });
-  ok(mg9.endT === 0 && mg9.universes === 1 && mg9.v === 8,
+  ok(mg9.endT === 0 && mg9.universes === 1 && mg9.v === G92.SAVE_VER,
     "a v7 save arrives with the clock at zero and one universe");
+}
+
+/* ---------- starve: the five quietings, then the last gathering (§8) ---------- */
+
+{
+  const st10 = {};
+  const w10 = boot(st10).window, d10 = w10.document, G10 = w10.__tithe, S10 = G10.state;
+  /* the same dead village, all four voices already spoken — the vigil still held */
+  S10.proj.fire = true; S10.proj.tools = true; S10.proj.rats = true; S10.proj.shrineX = true;
+  S10.proj.temple = true; S10.proj.tithe = true; S10.proj.songs = true; S10.proj.calendar = true;
+  S10.proj.lights = true; S10.proj.ascend = true; S10.proj.last = true;
+  S10.mir.goodyear = true; S10.mir.obedience = true; S10.mir.tongues = true; S10.mir.hush = 1;
+  S10.bld.hut = 5; S10.bld.farm = 3; S10.bld.quarry = 1; S10.bld.sawpit = 1; S10.bld.granary = 1;
+  S10.turn1 = true; S10.offerings = 21; S10.nameIdx = 22; S10.ratsIdx = 3; S10.deeper = 4;
+  S10.totalFavor = 3000; S10.pop = 0; S10.jobs = { f:0, w:0, m:0, p:0, c:0 };
+  S10.favor = 173.4; S10.food = 6000; S10.legend = 12; S10.slider = 1; S10.tithedLine = 0;
+  S10.silenceBorn = true; S10.silenceT = 200; S10.faint = 0; S10.dimT = 0; S10.vigil = true;
+  S10.galaxy = 2; S10.worlds = 14; S10.heralds = 0; S10.seen.heraldT = 1;
+  S10.souls = 1594323e12; S10.endState = 1; S10.endT = 33;
+  const tk = s => { S10.last = Date.now() - (s ? s * 1000 : 1); G10.tick(); };
+  tk();
+
+  const stv = d10.getElementById("proj-starve"), hun = d10.getElementById("proj-hunger");
+  ok(!!stv && !stv.disabled && !d10.getElementById("proj-q1"),
+    "the refusal stands lit; nothing follows it yet");
+
+  /* the refusal is given; both answers close */
+  stv.click();
+  ok(S10.starved === 1, "the refusal is given");
+  ok(stv.disabled && hun.disabled, "both answers close when one is given");
+  G10.doHunger();
+  ok(S10.universes === 1 && !("tithe-universe" in st10),
+    "the offer cannot be taken back up");
+
+  /* q1: let the vigil lapse */
+  const q1 = d10.getElementById("proj-q1");
+  ok(!!q1 && !q1.disabled && q1.querySelector(".nm").textContent === "let the vigil lapse" &&
+     q1.querySelector(".co").textContent === "",
+    "the first quieting arrives unpriced");
+  ok(!d10.getElementById("proj-q2"), "one quieting at a time");
+  const vig = d10.getElementById("bld-vigil");
+  ok(vig.querySelector(".ct").textContent === "held", "the vigil is still held at the end");
+  q1.click();
+  ok(S10.quiet === 1 && S10.vigil === false, "the vigil lapses, and nothing dims");
+  ok(vig.disabled && vig.querySelector(".ct").textContent === "" &&
+     vig.querySelector(".co").textContent === "",
+    "the vigil row goes quiet for good");
+  G10.buyBld(G10.BLD.find(b => b.id === "vigil"));
+  ok(S10.vigil === false, "it cannot be held again");
+  ok(q1.disabled, "a quieting is spent");
+  G10.doQuiet(G10.PROJ.find(p => p.id === "q3"));
+  ok(S10.quiet === 1, "the quietings keep their order");
+
+  /* q2: unmake the miracles — the food row wakes with a single digit */
+  const q2 = d10.getElementById("proj-q2");
+  q2.click();
+  ok(S10.quiet === 2 && Object.keys(S10.mir).length === 0, "the miracles are unmade");
+  ok(d10.getElementById("mir-tongues").parentElement.classList.contains("ghost"),
+    "the miracle rows blank");
+  ok(!d10.getElementById("row-food").classList.contains("ghost") &&
+     d10.getElementById("foodVal").textContent === "2.0",
+    "the food row wakes: 2.0");
+  G10.buyMir(G10.MIR.find(m => m.id === "tongues"));
+  ok(!S10.mir.tongues, "no miracle can be bought back");
+
+  /* q3: close the tithe — the dial greys forever */
+  d10.getElementById("proj-q3").click();
+  ok(S10.quiet === 3 && d10.getElementById("slider").disabled, "the tithe closes; the dial greys");
+
+  /* q4: take down the temple — stone comes back a single digit */
+  d10.getElementById("proj-q4").click();
+  ok(S10.quiet === 4, "the temple comes down");
+  ok(!d10.getElementById("row-stone").classList.contains("ghost") &&
+     d10.getElementById("stoneVal").textContent === "5.0",
+    "the stone row wakes: 5.0");
+  let sc10 = G10.villageScene();
+  ok(sc10.builds.some(b => b.sprite === "shrine") && !sc10.builds.some(b => b.sprite === "temple"),
+    "the temple walks back down to a shrine");
+  ok(sc10.dark && sc10.stars !== null, "the night holds while the shrine stands");
+
+  /* q5: quiet the shrine — billed at exactly the balance, live */
+  const q5 = d10.getElementById("proj-q5");
+  ok(!!q5 && q5.querySelector(".co").textContent === "all that remains — 173.4 favor",
+    "the last bill is the whole balance");
+  S10.favor = 209.7; G10.render();
+  ok(q5.querySelector(".co").textContent === "all that remains — 209.7 favor",
+    "the bill follows the balance to the decimal");
+  q5.click();
+  ok(S10.quiet === 5 && S10.favor === 0 && d10.getElementById("favorVal").textContent === "0.0",
+    "the shrine is quiet; the favor is spent to the last tenth");
+  ok(q5.querySelector(".co").textContent === "", "the bill is settled");
+  ok(!d10.getElementById("row-wood").classList.contains("ghost") &&
+     d10.getElementById("woodVal").textContent === "3.0",
+    "the wood row wakes: 3.0");
+
+  /* dawn: the lock releases, the board was only ever the night sky */
+  sc10 = G10.villageScene();
+  ok(sc10.g === 1 && sc10.r === 0 && sc10.stars === null && sc10.dark === false,
+    "dawn: full light, no red, no board");
+  ok(sc10.builds.some(b => b.sprite === "hollow" && b.col === G10.ANCHORS.hollow.col),
+    "the hollow again, where it always was");
+  ok(sc10.flecks.length === 21, "the picture remembers all twenty-one");
+
+  /* the last gathering: the first verb returns with its first words */
+  const ber = d10.getElementById("act-berries");
+  ok(!ber.classList.contains("ghost") && !ber.disabled &&
+     ber.textContent === "gather berries",
+    "gather berries returns at dawn");
+  ok(d10.getElementById("actTease").textContent === "", "no name before the first handful");
+  ber.click();
+  ok(S10.gather === 1 && S10.food === 3,
+    "one handful, one point of food");
+  ok(d10.getElementById("actTease").textContent === "for " + G10.nameAt(0) + ".",
+    "the first name, in taken order");
+  sc10 = G10.villageScene();
+  ok(!!sc10.walker, "someone is on the road again");
+  const wcol1 = sc10.walker.col;
+  ber.click(); ber.click();
+  ok(d10.getElementById("actTease").textContent === "for " + G10.nameAt(2) + ".",
+    "the third name");
+  ber.click();
+  ok(d10.getElementById("actTease").textContent === "for " + G10.nameAt(4) + ".",
+    "the watcher kept his name; the count does not say so");
+  sc10 = G10.villageScene();
+  ok(sc10.walker.col > wcol1, "each handful is a step in from the trees");
+
+  while (S10.gather < S10.offerings) ber.click();
+  ok(S10.gather === 21 && S10.food === 23 &&
+     d10.getElementById("foodVal").textContent === "23.0",
+    "twenty-one handfuls: 2.0 grew to 23.0");
+  ok(d10.getElementById("actTease").textContent === G10.GATHER.end &&
+     G10.GATHER.end.length === 25,
+    "the hill keeps the names");
+  ok(ber.disabled, "the verb is spent");
+  G10.doGather();
+  ok(S10.gather === 21 && S10.food === 23, "there is nothing more to gather");
+  sc10 = G10.villageScene();
+  ok(sc10.walker === null, "the road is empty; everyone who is coming has come");
+  ok(d10.getElementById("uniLine").textContent === "universe 1",
+    "universe 1, and it stays");
+
+  /* the ending keeps: a reload changes nothing */
+  w10.dispatchEvent(new w10.Event("beforeunload"));
+  const w11 = boot(st10).window, d11 = w11.document, G11 = w11.__tithe, S11 = G11.state;
+  ok(S11.starved === 1 && S11.quiet === 5 && S11.gather === 21,
+    "the ending survives the night");
+  ok(d11.getElementById("actTease").textContent === G11.GATHER.end &&
+     d11.getElementById("act-berries").disabled,
+    "the hill still keeps the names");
+  ok(d11.getElementById("foodVal").textContent === "23.0" &&
+     d11.getElementById("favorVal").textContent === "0.0",
+    "the final screen holds: food 23.0, favor 0.0");
+
+  /* a v8 save arrives with the ending unbegun */
+  const mg10 = G11.migrate({ v:8, turn1:true, galaxy:2, endState:1,
+    proj:{ ascend:true, last:true } });
+  ok(mg10.starved === 0 && mg10.quiet === 0 && mg10.gather === 0 && mg10.v === G11.SAVE_VER,
+    "a v8 save arrives with the ending unbegun");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */

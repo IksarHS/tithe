@@ -87,6 +87,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
       <h2 id="h-act">actions</h2>
       <button id="act-berries" title="the woods provide.">gather berries</button>
       <button id="act-wood" class="ghost">cut wood</button>
+      <div class="tease" id="actTease"></div>
     </section>
     <section id="sec-stores" class="hidden">
       <h2 id="h-stores">stores</h2>
@@ -145,13 +146,14 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 
 const SAVE_KEY = "tithe-save";
 const U_KEY    = "tithe-universe";      /* tracked since first install (law 21) — it survives the wipe */
-const SAVE_VER = 8;
+const SAVE_VER = 9;
 
 const CURS = ["food","wood","stone","favor"];
 const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"totalFavor" };
 
 const ACTS = [
-  { id:"berries", cur:"food", die:s=>!!s.proj.ascend, el:"act-berries" },
+  /* §8: the first verb returns at dawn — one click per fleck (law 24) */
+  { id:"berries", cur:"food", gather:true, show:s=>true, die:s=>!!s.proj.ascend && s.quiet<5, el:"act-berries" },
   { id:"wood",    cur:"wood", show:s=>s.totalFood>=3, die:s=>!!s.proj.tithe, el:"act-wood" },
 ];
 
@@ -208,6 +210,13 @@ const PROJ = [
     show:s=>s.endState>0 && s.endT>=VOICE_S*4 },
   { id:"starve", name:"starve", flavor:"refuse.", starve:true, act:3,
     show:s=>s.endState>0 && s.endT>=VOICE_S*4 },
+  /* §8: the five quietings — each return wakes a dead store row with a single digit (law 23) */
+  { id:"q1", name:"let the vigil lapse",  flavor:"", quiet:1, act:3, show:s=>s.starved>0 },
+  { id:"q2", name:"unmake the miracles",  flavor:"", quiet:2, ret:{food:2},  act:3, show:s=>s.quiet>=1 },
+  { id:"q3", name:"close the tithe",      flavor:"", quiet:3, act:3, show:s=>s.quiet>=2 },
+  { id:"q4", name:"take down the temple", flavor:"", quiet:4, ret:{stone:5}, act:3, show:s=>s.quiet>=3 },
+  { id:"q5", name:"quiet the shrine",     flavor:"", quiet:5, ret:{wood:3},  act:3,
+    costLine:s=>"all that remains — " + s.favor.toFixed(1) + " favor", show:s=>s.quiet>=4 },
 ];
 
 const MIR = [
@@ -223,12 +232,15 @@ const MIR = [
 /* the one unprompted aside in the whole game: once, for sixty seconds, never again */
 const ASIDE = { text:"they do not count themselves.", s:60 };
 
+/* §8: the last gathering — the only time anything answers the picture */
+const GATHER = { line: n => "for " + n + ".", end: "the hill keeps the names." };
+
 const LEX = [
   { id:"h-shrine",    pre:"the hollow",     post:"the shrine" },
   { id:"h-act",       pre:"actions",        post:"answers" },
   { id:"h-village",   pre:"the village",    post:"the flock" },
   { id:"popWord",     pre:"villagers",      post:"stock" },
-  { id:"act-berries", pre:"gather berries", post:"grant berries" },
+  { id:"act-berries", pre:"gather berries", post:"grant berries", dawn:true },  /* the first verb returned */
   { id:"act-wood",    pre:"cut wood",       post:"grant wood" },
 ];
 
@@ -307,6 +319,7 @@ function fresh() {
     legend:0, deeper:0, doubt:0, doubtT:0, signs:0, slider:0.5, aside:false, asideLeft:0,
     heralds:0, heraldSeeds:0, heraldSpent:0, worlds:0, worldProg:0, souls:0, galaxy:0,
     tithedLine:0, vigil:false, universes:1, endState:0, endT:0,
+    starved:0, quiet:0, gather:0,
     silenceBorn:false, silenceT:0, faint:0, dimT:0,
     seen:{},
   };
@@ -340,6 +353,7 @@ function migrate(raw) {
   /* v5 -> v6: the board (act 3) — heralds, worlds, souls arrive the same way */
   /* v6 -> v7: the silence (m7) — faint lights and the vigil's clock, defaults again */
   /* v7 -> v8: the choice (m9) — the ending's clock arrives at zero */
+  /* v8 -> v9: starve (m10) — the quietings and the gathering arrive unbegun */
   s.v = SAVE_VER;
   return s;
 }
@@ -513,10 +527,11 @@ const costText = cost => cost ? Object.keys(cost).map(k => fmt(cost[k]) + " " + 
 
 const smokeRate = () => 0.5 + 1.2 * Math.log10(1 + Math.max(0, totalProd()));
 const glowT = () => {
+  if (S.quiet >= 5) return 1;  /* §8: the lock releases — dawn, generations later */
   const g = Math.min(1, Math.log10(1 + S.totalFood + S.totalWood + S.totalStone) / 4);
   return S.turn1 ? Math.min(g, S.glowLock) : g;
 };
-const redT = () => S.turn1 ? Math.min(1, Math.log10(1 + S.totalFavor) / 3) : 0;
+const redT = () => S.quiet >= 5 ? 0 : S.turn1 ? Math.min(1, Math.log10(1 + S.totalFavor) / 3) : 0;
 
 /* ============================== motion ============================== */
 
@@ -583,8 +598,11 @@ function villageScene() {
   if (S.proj.fire) builds.push({ sprite:S.proj.ascend ? "ember" : "fire", col:ANCHORS.fire.col, row:ANCHORS.fire.row });
   const hollow = !S.proj.shrineX && (S.seen["p:shrineX"] || S.totalStone >= 70);
   if (hollow) builds.push({ sprite:"hollow", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
-  /* the shrine grows in place: one anchor, three lives — hollow, shrine, temple */
-  if (S.proj.shrineX) builds.push({ sprite:S.proj.temple ? "temple" : "shrine", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
+  /* the shrine grows in place: one anchor, three lives — hollow, shrine, temple.
+     §8: the quietings walk it back down the same ladder */
+  if (S.proj.shrineX) builds.push({
+    sprite: S.quiet >= 5 ? "hollow" : (S.proj.temple && S.quiet < 4) ? "temple" : "shrine",
+    col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
 
   const flecks = [];
   const n = Math.min(S.offerings, FIELDG.flecks.length);
@@ -639,17 +657,24 @@ function villageScene() {
     const u = Math.max(0, 1 - S.arriveCd / arriveCdS());
     walker = { col: 6 + (ANCHORS.fire.col - 8 - 6) * u, row: 10.4 };
   }
+  /* §8: the arrival walker, reborn — each gathering click is a step in from the trees */
+  if (S.quiet >= 5 && S.gather < S.offerings) {
+    const u = S.offerings > 0 ? S.gather / S.offerings : 0;
+    walker = { col: 6 + (ANCHORS.fire.col - 8 - 6) * u, row: 10.4 };
+  }
 
-  /* the board (§7.1): the stars the seed has drawn since first boot, now lights to take */
+  /* the board (§7.1): the stars the seed has drawn since first boot, now lights to take.
+     §8: dawn erases it — the board was only ever the night sky */
   let stars = null;
-  if (S.proj.ascend) stars = FIELDG.stars.map((st, i) => ({
+  if (S.proj.ascend && S.quiet < 5) stars = FIELDG.stars.map((st, i) => ({
     col: st.col, row: st.row,
     /* the silence stands between the red wall and the next light (§7.3) */
     state: i < S.worlds ? "red" : i < S.worlds + S.faint ? "faint" : "lit",
   }));
 
   /* §7.4: each sky is dimmer than the last — the re-roll is visible, not announced */
-  return { g: glowT(), r: redT(), dark: !!S.proj.ascend, sky: S.galaxy, builds, figures, flecks, smoke, walker, stars };
+  return { g: glowT(), r: redT(), dark: !!S.proj.ascend && S.quiet < 5, sky: S.galaxy,
+    builds, figures, flecks, smoke, walker, stars };
 }
 
 /* ============================== field: painter ============================== */
@@ -828,7 +853,7 @@ const els = {};
  "legendVal","legendRate","soulsVal","soulsRate","faithLine","sliderRow","slider",
  "sendL","sendR","earlyWorks","congWorks","uniLine",
  "row-food","row-wood","row-stone","row-favor","row-legend","row-souls","bldList","projList","mirList",
- "act-berries","act-wood"].forEach(id => els[id] = $(id));
+ "act-berries","act-wood","actTease"].forEach(id => els[id] = $(id));
 JOBS.forEach(j => { els["job-"+j.id]=$("job-"+j.id); els["jn-"+j.id]=$("jn-"+j.id);
   els["jp-"+j.id]=$("jp-"+j.id); els["jm-"+j.id]=$("jm-"+j.id); });
 
@@ -868,7 +893,8 @@ function fixJobs() {
 function buyBld(def) {
   if (def.herald) return buyHerald();
   if (def.recall) return recallHeralds();
-  if (def.vigil) { S.vigil = !S.vigil; render(); save(); return; }  /* a toggle, not a purchase */
+  if (def.vigil) { if (S.quiet >= 1) return;  /* §8: lapsed for good */
+    S.vigil = !S.vigil; render(); save(); return; }  /* a toggle, not a purchase */
   if (S.proj.tithe) return;  /* molt 2: nothing more is built by hand */
   if (def.max && S.bld[def.id] >= def.max) return;
   const c = bldCost(def);
@@ -881,7 +907,8 @@ function buyProj(def) {
   if (def.last) return takeLastStar();
   if (def.voice) return;             /* someone is speaking; there is nothing to buy */
   if (def.hunger) return doHunger();
-  if (def.starve) return;            /* the refusal is answered in its own time (m10) */
+  if (def.starve) return doStarve();
+  if (def.quiet) return doQuiet(def);
   if (S.proj[def.id] || !def.cost || !canAfford(def.cost)) return;
   if (def.audit && !def.audit(S)) return;  /* the door audits every wallet (law 12) */
   /* the tithe was wood and stone's last bill: the old ledgers never open again */
@@ -939,7 +966,7 @@ function takeLastStar() {
 }
 /* §8: begin again — the cycle is canon. the village will not remember; the count will */
 function doHunger() {
-  if (!S.endState) return;
+  if (!S.endState || S.starved) return;  /* the refusal closes the offer */
   leaving = true;  /* the old world must not save itself on the way out */
   const u = (S.universes || 1) + 1;
   try { localStorage.setItem(U_KEY, String(u)); } catch (e) {}
@@ -948,6 +975,34 @@ function doHunger() {
   next.universes = u;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(next)); } catch (e) {}
   location.reload();  /* the next village boots the way the first one did */
+}
+/* §8: refuse — the quietings begin */
+function doStarve() {
+  if (!S.endState || S.starved) return;
+  S.starved = 1;
+  render(); save();
+}
+/* §8: the five quietings — each return wakes a dead store row with a single digit (law 23) */
+function doQuiet(def) {
+  if (S.quiet !== def.quiet - 1) return;  /* one at a time, in order */
+  S.quiet = def.quiet;
+  if (def.quiet === 1) S.vigil = false;   /* nothing dims — there is nothing left to take */
+  if (def.quiet === 2) S.mir = {};        /* every multiplier dies */
+  if (def.quiet === 5) S.favor = 0;       /* billed at exactly the balance (law 23) */
+  if (def.ret) for (const k of Object.keys(def.ret)) S[k] = def.ret[k];
+  render(); save();
+}
+/* §8: the last gathering — one click per fleck, the debt to the life (law 23) */
+function doGather() {
+  if (S.quiet < 5 || S.gather >= S.offerings) return;
+  S.food += 1.0;
+  S.gather++;
+  render(); save();
+}
+/* the names the shrine consumed, in taken order — the watcher kept his (§8) */
+function gatherName(i) {
+  if (S.ratsIdx >= 0 && i >= S.ratsIdx) i++;
+  return nameAt(i);
 }
 function buyMir(def) {
   const c = mirCost(def);
@@ -959,6 +1014,7 @@ function buyMir(def) {
     return;
   }
   /* the hush expires with its sky (§7.3) — it can be asked for again under the next one */
+  if (S.quiet >= 2) return;  /* §8: unmade is unmade */
   if ((def.hush ? hushActive() : S.mir[def.id]) || !canAfford(c)) return;
   pay(c); S.mir[def.id] = def.hush ? S.galaxy + 1 : true;
   render(); save();
@@ -993,6 +1049,7 @@ function doOffering() {
 }
 
 function doAct(a) {
+  if (a.gather && S.quiet >= 5) return doGather();  /* §8: the verb came back changed */
   if (a.die && a.die(S)) return;  /* the verb is dead */
   S[a.cur] += clickPower();
   S[TOT[a.cur]] += clickPower();
@@ -1068,7 +1125,8 @@ function checkReveals() {
 
 /* ============================== render ============================== */
 
-const lex = id => { const l = LEX.find(x=>x.id===id); return l ? (S.turn1 ? l.post : l.pre) : ""; };
+const lex = id => { const l = LEX.find(x=>x.id===id); if (!l) return "";
+  return (S.turn1 && !(l.dawn && S.quiet >= 5)) ? l.post : l.pre; };  /* §8: the first verb returns */
 let lastSpread = -1;
 
 /* the one-time tease gives way to the rate: the line stays, the words earn their keep */
@@ -1090,18 +1148,19 @@ function setText(el, txt) { if (el && el.textContent !== txt) el.textContent = t
 function render() {
   checkReveals();
 
-  setText(els["foodVal"], S.proj.ascend ? "" : fmtStore(S.food));
-  setText(els["woodVal"], S.proj.tithe ? "" : fmtStore(S.wood));
-  setText(els["stoneVal"], S.proj.tithe ? "" : fmtStore(S.stone));
+  /* §8: the quietings wake the dead rows one by one — the refund punchline (law 23) */
+  setText(els["foodVal"], S.proj.ascend && S.quiet < 2 ? "" : fmtStore(S.food));
+  setText(els["woodVal"], S.proj.tithe && S.quiet < 5 ? "" : fmtStore(S.wood));
+  setText(els["stoneVal"], S.proj.tithe && S.quiet < 4 ? "" : fmtStore(S.stone));
   /* the count: precision as dread — the bank stops rounding when it matters most */
   setText(els["favorVal"], S.proj.count ? S.favor.toFixed(1) : fmtStore(S.favor));
   setText(els["foodRate"], !S.proj.ascend && (S.pop > 0 || prodOf("food") > 0) ? fmtRate(rateOf("food")) : "");
   setText(els["woodRate"], !S.proj.tithe && prodOf("wood") > 0 ? fmtRate(rateOf("wood")) : "");
   setText(els["stoneRate"], !S.proj.tithe && prodOf("stone") > 0 ? fmtRate(rateOf("stone")) : "");
   /* molt 2: wood and stone leave the ledger; molt 3 takes the larder the same way */
-  els["row-wood"].classList.toggle("ghost", !!S.proj.tithe);
-  els["row-stone"].classList.toggle("ghost", !!S.proj.tithe);
-  els["row-food"].classList.toggle("ghost", !!S.proj.ascend);
+  els["row-wood"].classList.toggle("ghost", !!S.proj.tithe && S.quiet < 5);
+  els["row-stone"].classList.toggle("ghost", !!S.proj.tithe && S.quiet < 4);
+  els["row-food"].classList.toggle("ghost", !!S.proj.ascend && S.quiet < 2);
   /* the stall is a readout, not an absence: the rate reads zero until cured.
      after the last star the zero is permanent — the first zero that will never move (§8) */
   setText(els["favorRate"], S.endState ? "0.0/s" : stalled() ? fmtRate(0)
@@ -1116,6 +1175,11 @@ function render() {
   setText(els["h-act"], lex("h-act"));
   setText(els["act-berries"], lex("act-berries"));
   setText(els["act-wood"], lex("act-wood"));
+  /* §8: the gathering — N names in taken order, then the hill's one sentence */
+  els["act-berries"].disabled = S.quiet >= 5 && S.gather >= S.offerings;
+  setText(els["actTease"], S.quiet < 5 ? ""
+    : S.gather >= S.offerings ? GATHER.end
+    : S.gather > 0 ? GATHER.line(gatherName(S.gather - 1)) : "");
   setText(els["h-village"], lex("h-village"));
   setText(els["h-shrine"], lex("h-shrine"));
   let pl;
@@ -1146,6 +1210,7 @@ function render() {
     const v = String(Math.round(S.slider * 100));
     if (els["slider"].value !== v) els["slider"].value = v;
   }
+  els["slider"].disabled = S.quiet >= 3;  /* §8: the tithe closes — the dial greys forever */
 
   /* §8: the strip wakes when the count speaks — and never sleeps again */
   setText(els["uniLine"],
@@ -1166,10 +1231,11 @@ function render() {
       setText(r.co, S.heraldSeeds > 0 ? costText({ favor: S.heraldSpent }) : "");
       r.btn.disabled = S.heraldSeeds < 1;
     } else if (r.kind === "bld" && def.vigil) {
-      /* §7.3: the price is per second; the count column says whether it is being paid */
-      setText(r.ct, S.vigil ? "held" : "");
-      setText(r.co, hushActive() ? "" : fmt(vigilCost()) + " favor/s");
-      r.btn.disabled = false;
+      /* §7.3: the price is per second; the count column says whether it is being paid.
+         §8: lapsed, it asks for nothing — nothing dims; there is nothing left to take */
+      setText(r.ct, S.quiet < 1 && S.vigil ? "held" : "");
+      setText(r.co, S.quiet >= 1 || hushActive() ? "" : fmt(vigilCost()) + " favor/s");
+      r.btn.disabled = S.quiet >= 1;
     } else if (r.kind === "proj" && def.sky) {
       /* §7.4: the same row, mutated price — two doors, then a dead line under the third sky */
       setText(r.ct, "");
@@ -1185,7 +1251,13 @@ function render() {
       /* §8: the price column is empty — the economy is over and someone is speaking */
       setText(r.ct, "");
       setText(r.co, "");
-      r.btn.disabled = !def.hunger;  /* the refusal is answered in its own time (m10) */
+      /* the choice stands open until either answer is given; then both close */
+      r.btn.disabled = !!def.voice || S.starved > 0;
+    } else if (r.kind === "proj" && def.quiet) {
+      /* §8: cost-less, one at a time — except the last, billed at exactly the balance (law 23) */
+      setText(r.ct, "");
+      setText(r.co, S.quiet >= def.quiet ? "" : def.costLine ? def.costLine(S) : "");
+      r.btn.disabled = S.quiet !== def.quiet - 1;
     } else if (r.kind === "bld") {
       const atMax = def.max && S.bld[def.id] >= def.max;
       const c = bldCost(def);
@@ -1209,8 +1281,10 @@ function render() {
       /* the early works fold into one line; the congregation folds the same way */
       if (r.kind === "proj" && def.act === 1) r.wrap.classList.toggle("hidden", !!S.proj.tithe);
       if (r.kind === "proj" && def.act === 2) r.wrap.classList.toggle("hidden", !!S.proj.ascend);
-      /* molt 3: the old miracles blank; act 3's arrive lit in the same list */
-      if (r.kind === "mir") r.wrap.classList.toggle("ghost", !!S.proj.ascend && def.act !== 3);
+      /* molt 3: the old miracles blank; act 3's arrive lit in the same list.
+         §8: unmade, they all blank — every multiplier is dead */
+      if (r.kind === "mir") r.wrap.classList.toggle("ghost",
+        (!!S.proj.ascend && def.act !== 3) || S.quiet >= 2);
     }
   }
 
@@ -1418,9 +1492,9 @@ window.__tithe = {
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE, DOUBT_S, ASIDE,
   TITHED_S, HERALD, WORLDS_PER_SKY, WORLD, SOUL, SKY_MULT, REAP_RATE, SILENCE, VIGIL_RATE, SKY_DOOR,
-  VOICE_S, NGPLUS,
+  VOICE_S, NGPLUS, SAVE_VER,
   buyBld, buyProj, buyMir, doOffering, fixJobs, ascend, buyHerald, recallHeralds, openSky, takeLastStar,
-  doHunger, uMult,
+  doHunger, uMult, doStarve, doQuiet, doGather, gatherName, GATHER,
   heraldCost, worldNeed, worldSouls, reapRate, vigilCost, hushActive, convMult, skyCost,
   faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate, stalled, mirCost,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
