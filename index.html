@@ -94,6 +94,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
       <div class="store hidden" id="row-stone"><span class="nm">stone</span><span><span class="val" id="stoneVal">0.0</span><span class="rate" id="stoneRate"></span></span></div>
       <div class="store hidden" id="row-favor"><span class="nm">favor</span><span><span class="val" id="favorVal">0.0</span><span class="rate" id="favorRate"></span></span></div>
       <div class="store ghost" id="row-legend"><span class="nm">legend</span><span><span class="val" id="legendVal">0.0</span><span class="rate" id="legendRate"></span></span></div>
+      <div class="store ghost" id="row-souls"><span class="nm">souls</span><span><span class="val" id="soulsVal">0</span><span class="rate" id="soulsRate"></span></span></div>
     </section>
     <section id="sec-mir" class="hidden">
       <h2 id="h-mir">miracles</h2>
@@ -110,7 +111,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
       <div class="job ghost" id="job-m"><span class="jname">mason</span><span class="jn" id="jn-m">0</span><button class="jb" id="jm-m" aria-label="fewer masons">−</button><button class="jb" id="jp-m" aria-label="more masons">+</button></div>
       <div class="job ghost" id="job-p"><span class="jname">priest</span><span class="jn" id="jn-p">0</span><button class="jb" id="jm-p" aria-label="fewer priests">−</button><button class="jb" id="jp-p" aria-label="more priests">+</button></div>
       <div class="job ghost" id="job-c"><span class="jname">cultivator</span><span class="jn" id="jn-c">0</span><button class="jb" id="jm-c" aria-label="fewer cultivators">−</button><button class="jb" id="jp-c" aria-label="more cultivators">+</button></div>
-      <div class="job ghost" id="sliderRow"><span class="send">fields</span><input type="range" id="slider" min="0" max="100" value="50" aria-label="fields to shrine"><span class="send">shrine</span></div>
+      <div class="job ghost" id="sliderRow"><span class="send" id="sendL">fields</span><input type="range" id="slider" min="0" max="100" value="50" aria-label="fields to shrine"><span class="send" id="sendR">shrine</span></div>
     </section>
     <section id="sec-bld" class="hidden">
       <h2 id="h-bld">works</h2>
@@ -122,6 +123,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
     <section id="sec-proj" class="hidden">
       <h2 id="h-proj">undertakings</h2>
       <div class="tease hidden" id="earlyWorks">the early works — done</div>
+      <div class="tease hidden" id="congWorks">the congregation — done</div>
       <div id="projList"></div>
     </section>
     <section id="sec-shrine" class="hidden">
@@ -141,13 +143,13 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 /* ============================== content ============================== */
 
 const SAVE_KEY = "tithe-save";
-const SAVE_VER = 5;
+const SAVE_VER = 6;
 
 const CURS = ["food","wood","stone","favor"];
 const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"totalFavor" };
 
 const ACTS = [
-  { id:"berries", cur:"food",            el:"act-berries" },
+  { id:"berries", cur:"food", die:s=>!!s.proj.ascend, el:"act-berries" },
   { id:"wood",    cur:"wood", show:s=>s.totalFood>=3, die:s=>!!s.proj.tithe, el:"act-wood" },
 ];
 
@@ -166,6 +168,9 @@ const BLD = [
   { id:"quarry", name:"quarry", flavor:"the hill opens.",               cost:{wood:60}, rate:1.18, max:1, eff:{job:"m", per:0.25},   show:s=>s.bld.farm>=1,  sprite:"adit" },
   { id:"sawpit", name:"sawpit", flavor:"the logs come apart.",          cost:{wood:50,stone:15}, rate:1.18, max:1, eff:{job:"w", per:0.25}, show:s=>s.bld.quarry>=1, sprite:"sawpit" },
   { id:"granary",name:"granary",flavor:"the winter gets smaller.",      cost:{wood:80,stone:40}, rate:1.18, max:1, eff:{offline:8},           show:s=>s.turn1,        sprite:"granary" },
+  /* act 3 (§7.2): the works list's last tenants — nothing else is ever built */
+  { id:"herald", name:"a herald",           flavor:"it walks until it is heard.", cost:{favor:400}, herald:true, show:s=>!!s.proj.ascend },
+  { id:"recall", name:"recall the heralds", flavor:"",                            recall:true,      show:s=>s.heraldSeeds>0 },
 ];
 
 const PROJ = [
@@ -173,17 +178,17 @@ const PROJ = [
   { id:"tools",   name:"stone tools",        flavor:"flint edges.",                cost:{wood:30,stone:10},  done:"made", show:s=>s.totalStone>=3, eff:{allJobs:1.5}, act:1 },
   { id:"rats",    name:"rats in the stores", flavor:s=>nameAt(s.ratsIdx)+" sits up with a stick.", cost:{wood:60}, done:"kept", show:s=>s.totalFood>=120, act:1 },
   { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:90,wood:60}, done:"open", show:s=>s.totalStone>=70, act:1 },
-  { id:"temple",  name:"the temple",         flavor:"the hollow learns its name.", cost:{stone:120,wood:80,favor:150}, done:"raised", eff:{out:"favor",x:2}, show:s=>faithOf(s)>=4 },
-  { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:{favor:250,food:60,wood:80,stone:30}, done:"standing", show:s=>s.mir.obedience },
-  { id:"songs",   name:"the songs",          flavor:"they sing what they cannot say.", cost:{legend:20}, done:"sung",    eff:{out:"favor",x:1.5}, show:s=>s.legend>0 },
-  { id:"calendar",name:"a calendar",         flavor:"the days get names.",             cost:{legend:45}, done:"named",   eff:{arrive:0.8},        show:s=>s.proj.songs },
-  { id:"count",   name:"the count",          flavor:"every head, every hand.",         cost:{legend:90}, done:"counted", eff:{decimal:true},      show:s=>s.proj.calendar },
-  { id:"lights",  name:"other lights",       flavor:"the scouts come back quiet.",     cost:{favor:90},  done:"seen",    show:s=>s.offerings>=6 },
+  { id:"temple",  name:"the temple",         flavor:"the hollow learns its name.", cost:{stone:120,wood:80,favor:150}, done:"raised", eff:{out:"favor",x:2}, show:s=>faithOf(s)>=4, act:2 },
+  { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:{favor:250,food:60,wood:80,stone:30}, done:"standing", show:s=>s.mir.obedience, act:2 },
+  { id:"songs",   name:"the songs",          flavor:"they sing what they cannot say.", cost:{legend:20}, done:"sung",    eff:{out:"favor",x:1.5}, show:s=>s.legend>0, act:2 },
+  { id:"calendar",name:"a calendar",         flavor:"the days get names.",             cost:{legend:45}, done:"named",   eff:{arrive:0.8},        show:s=>s.proj.songs, act:2 },
+  { id:"count",   name:"the count",          flavor:"every head, every hand.",         cost:{legend:90}, done:"counted", eff:{decimal:true},      show:s=>s.proj.calendar, act:2 },
+  { id:"lights",  name:"other lights",       flavor:"the scouts come back quiet.",     cost:{favor:90},  done:"seen",    show:s=>s.offerings>=6, act:2 },
   /* the standing threat (law 2): visible and unaffordable for most of the act.
      the middle term is the characterization — the flock is not exchanged, it is spent */
   { id:"ascend",  name:"ascension",          flavor:"begin again. the village will not remember. you will.",
     cost:{favor:2000}, costLine:"13 faith + the flock + 2,000 favor",
-    audit:s=>faithOf(s)>=FAITH_MAX, done:"begun", show:s=>s.proj.lights },
+    audit:s=>faithOf(s)>=FAITH_MAX, done:"begun", show:s=>s.proj.lights, act:2 },
 ];
 
 const MIR = [
@@ -232,6 +237,14 @@ const FAITH_MAX = 13;                  // 1 at the turn + 8 gates + 4 deeper off
 const FAVOR_CAP_PER = 200;             // favor cap = 200 x faith — the cap is itself a forecast
 const LEGEND_RATE = 0.3;               // /s, only while favor rests at its cap
 const DOUBT_S  = 90;                   // seconds between doubts, while any remain — heresy compounds
+/* act 3 — the board (§7): worlds bought in herald-seconds, paid out in souls */
+const TITHED_S = 60;                   // the stamp: sixty seconds of epitaph, then the board
+const HERALD   = { cost:400, rate:1.25, grow:0.02, cap:144 };
+const WORLDS_PER_SKY = 14;
+const WORLD    = { base:40, rate:1.6 };// herald-seconds for world i: base x rate^i
+const SOUL     = { base:1e6, rate:3 }; // souls on conversion: base x rate^i x sky mult
+const SKY_MULT = 1000;                 // each sky multiplies souls and favor alike
+const REAP_RATE = 0.8;                 // favor/s per tithed world at full reap
 const CAP_HUT  = 2;
 const OFFLINE_CAP_S = 3600;
 const FIG_MAX  = 24;
@@ -265,7 +278,8 @@ function fresh() {
     offerings:0, nameIdx:0, surgeLeft:0, arriveCd:0, ratsIdx:-1, turn1:false, glowLock:0,
     starveT:0, clicks:0, walkPhase:0, smokePhase:0,
     legend:0, deeper:0, doubt:0, doubtT:0, signs:0, slider:0.5, aside:false, asideLeft:0,
-    heralds:0, worlds:0, souls:0, galaxy:0, vigil:false, universes:1, endState:0,
+    heralds:0, heraldSeeds:0, heraldSpent:0, worlds:0, worldProg:0, souls:0, galaxy:0,
+    tithedLine:0, vigil:false, universes:1, endState:0,
     seen:{},
   };
 }
@@ -295,6 +309,7 @@ function migrate(raw) {
   if (s.turn1 && s.favor > FAVOR_CAP_PER * fa) s.favor = FAVOR_CAP_PER * fa;
   if (s.jobs.p > fa) s.jobs.p = fa;
   /* v4 -> v5: the doubt era (signs, the aside) — new fields arrive with their defaults */
+  /* v5 -> v6: the board (act 3) — heralds, worlds, souls arrive the same way */
   s.v = SAVE_VER;
   return s;
 }
@@ -330,12 +345,16 @@ const nextName = () => nameAt(S.nameIdx);
 
 /* ============================== formatting ============================== */
 
-const fmt = n => {
+/* spelled suffixes to the quintillion (§7.1); dec keeps the count's tenth */
+const FMT_SUF = [[1e18,"qi"],[1e15,"qa"],[1e12,"t"],[1e9,"b"],[1e6,"m"],[1e3,"k"]];
+const fmt = (n, dec) => {
   if (!isFinite(n)) return "0";
   const a = Math.abs(n);
-  if (a >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,"") + "m";
-  if (a >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,"") + "k";
-  return String(Math.floor(n));
+  for (const u of FMT_SUF) if (a >= u[0]) {
+    const b = (n / u[0]).toFixed(1);
+    return (dec ? b : b.replace(/\.0$/, "")) + u[1];
+  }
+  return dec ? n.toFixed(1) : String(Math.floor(n));
 };
 const fmtStore = n => n < 1000 ? n.toFixed(1) : fmt(n);
 const fmtRate = n => {
@@ -361,7 +380,7 @@ const jobRate = (j, surge) => {
   return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * projOutMult(def.out) * sm;
 };
 const prodOf = (cur, surge) => JOBS.reduce((t,jd)=> t + (jd.out===cur ? jobRate(jd.id, surge) : 0), 0)
-  + (cur === "favor" ? congRate() : 0);
+  + (cur === "favor" ? congRate() + reapRate() : 0);
 const upkeep = () => (S.pop + S.jobs.p * ((JOBS.find(j=>j.id==="p").eats||1) - 1)) * UPKEEP;
 const ratsDrain = () => (S.seen["pp:rats"] && !S.proj.rats) ? RATS_DRAIN : 0;
 const rateOf = cur => prodOf(cur) - (cur==="food" ? upkeep() + ratsDrain() : 0);
@@ -389,8 +408,11 @@ function faithOf(s) {
 function favorCap(s) { return FAVOR_CAP_PER * Math.max(1, faithOf(s)); }
 /* favor fills to the brim and no further; what cannot fit was never given */
 function grantFavor(y) {
+  if (y <= 0) return 0;
+  /* the cap was the flock's regard; after ascension nothing is left to refuse it */
+  if (S.proj.ascend) { S.favor += y; S.totalFavor += y; return y; }
   const cp = favorCap();
-  if (S.favor >= cp || y <= 0) return 0;
+  if (S.favor >= cp) return 0;
   if (y >= cp - S.favor) { y = cp - S.favor; S.favor = cp; } else { S.favor += y; }
   S.totalFavor += y;
   return y;
@@ -401,6 +423,13 @@ const jobCapOf = j => j === "p" ? faithOf() : Infinity;
 const stalled = () => S.proj.tithe && S.doubt > 0 && S.doubt * 2 >= S.pop;
 /* the sign's ladder: half again, each time (the only repeatable miracle) */
 const mirCost = def => def.repeat ? { favor: Math.ceil(def.cost.favor * Math.pow(def.rate, S.signs)) } : def.cost;
+
+/* act 3 (§7): the board's arithmetic — serial worlds, replicating heralds */
+const heraldCost = () => ({ favor: Math.ceil(HERALD.cost * Math.pow(HERALD.rate, S.heraldSeeds)) });
+const worldNeed  = i => WORLD.base * Math.pow(WORLD.rate, i);
+const worldSouls = i => SOUL.base * Math.pow(SOUL.rate, i) * Math.pow(SKY_MULT, S.galaxy);
+/* each tithed world pays for attention; the slider's right share is the asking */
+const reapRate = () => S.proj.ascend ? S.worlds * REAP_RATE * Math.pow(SKY_MULT, S.galaxy) * S.slider : 0;
 
 /* molt 2: one slider decides, the rows report. fields hands feed first;
    whoever the larder spares tends the cradles; the shrine takes the rest,
@@ -506,7 +535,8 @@ function villageScene() {
   if (S.bld.quarry > 0) builds.push({ sprite:"adit", col:ANCHORS.adit.col, row:ANCHORS.adit.row });
   if (S.bld.sawpit > 0) builds.push({ sprite:"sawpit", col:ANCHORS.sawpit.col, row:ANCHORS.sawpit.row });
   if (S.bld.granary > 0) builds.push({ sprite:"granary", col:ANCHORS.granary.col, row:ANCHORS.granary.row });
-  if (S.proj.fire) builds.push({ sprite:"fire", col:ANCHORS.fire.col, row:ANCHORS.fire.row });
+  /* molt 3: the fire is out — the hearth stays, the flame does not */
+  if (S.proj.fire) builds.push({ sprite:S.proj.ascend ? "ember" : "fire", col:ANCHORS.fire.col, row:ANCHORS.fire.row });
   const hollow = !S.proj.shrineX && (S.seen["p:shrineX"] || S.totalStone >= 70);
   if (hollow) builds.push({ sprite:"hollow", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
   /* the shrine grows in place: one anchor, three lives — hollow, shrine, temple */
@@ -544,8 +574,14 @@ function villageScene() {
     });
   }
 
+  /* §7.2: the heralds stand the ridgeline, red, facing out — never more than seven drawn */
+  if (S.proj.ascend && S.heralds >= 1) {
+    const hn = Math.min(7, Math.floor(S.heralds));
+    for (let i = 0; i < hn; i++) figures.push({ job:"h", col: 20 + i * (70 / 6), row: 5.6 });
+  }
+
   const smoke = [];
-  if (S.proj.fire) {
+  if (S.proj.fire && !S.proj.ascend) {
     const a = ANCHORS.fire, lo = a.row - 0.35, span = 3.2;  /* a column over the flame, not stray stars */
     for (let i = 0; i < 3; i++) {
       const u = (S.smokePhase * 0.5 + i / 3) % 1;
@@ -555,12 +591,19 @@ function villageScene() {
 
   /* a pending arrival is seen on the road: the walk in from the treeline IS the wait */
   let walker = null;
-  if (S.proj.fire && S.pop < cap() && S.arriveCd > 0 && S.food >= arriveAt()) {
+  if (!S.proj.ascend && S.proj.fire && S.pop < cap() && S.arriveCd > 0 && S.food >= arriveAt()) {
     const u = Math.max(0, 1 - S.arriveCd / arriveCdS());
     walker = { col: 6 + (ANCHORS.fire.col - 8 - 6) * u, row: 10.4 };
   }
 
-  return { g: glowT(), r: redT(), builds, figures, flecks, smoke, walker };
+  /* the board (§7.1): the stars the seed has drawn since first boot, now lights to take */
+  let stars = null;
+  if (S.proj.ascend) stars = FIELDG.stars.map((st, i) => ({
+    col: st.col, row: st.row,
+    state: i < S.worlds ? "red" : "lit",  /* faint waits on the silence (m7) */
+  }));
+
+  return { g: glowT(), r: redT(), dark: !!S.proj.ascend, builds, figures, flecks, smoke, walker, stars };
 }
 
 /* ============================== field: painter ============================== */
@@ -588,7 +631,7 @@ const PAL = {
   buildLo:"#3a3329", buildHi:"#574c3a",
   fig:"#cfc5b2", figP:"#a14034",
   fire:"#e8d4a4", ember:"#8a6a40", smoke:"#7f7a6c", fleck:"#a14034",
-  star:"#5a5345", hollow:"#060504",
+  star:"#5a5345", starLit:"#8d8470", starFaint:"#363128", hollow:"#060504",
 };
 
 let paintKey = "";
@@ -598,11 +641,12 @@ function paint() {
   const cw = cv.clientWidth, chh = cv.clientHeight;
   if (!cw || !chh) return;
   const sc = villageScene();
-  const key = [sc.g.toFixed(2), sc.r.toFixed(2),
+  const key = [sc.g.toFixed(2), sc.r.toFixed(2), sc.dark ? 1 : 0,
     sc.builds.map(b=>b.sprite+b.col).join(","), sc.flecks.length,
     sc.figures.map(f=>(f.col).toFixed(1)+","+(f.row).toFixed(1)).join(";"),
     sc.smoke.map(s=>s.row.toFixed(1)).join(","),
-    sc.walker ? sc.walker.col.toFixed(1) : "", cw, chh].join("|");
+    sc.walker ? sc.walker.col.toFixed(1) : "",
+    sc.stars ? sc.stars.map(s=>s.state[0]).join("") : "", cw, chh].join("|");
   if (key === paintKey) return;
   paintKey = key;
 
@@ -615,8 +659,16 @@ function paint() {
   let sky = mix(PAL.skyLo, PAL.skyHi, sc.g);
   if (sc.r > 0) sky = mix(sky, PAL.skyRed, sc.r);
   ctx.fillStyle = sky; ctx.fillRect(0, 0, cw, chh);
-  ctx.fillStyle = PAL.star;
-  for (const st of FIELDG.stars) ctx.fillRect(X(st.col), Y(st.row), 1.5, 1.5);
+  if (sc.stars) {
+    /* the board: a tithed world keeps the only red the game owns */
+    for (const st of sc.stars) {
+      ctx.fillStyle = st.state === "red" ? PAL.fleck : st.state === "faint" ? PAL.starFaint : PAL.starLit;
+      ctx.fillRect(X(st.col), Y(st.row), 2.5, 2.5);
+    }
+  } else {
+    ctx.fillStyle = PAL.star;
+    for (const st of FIELDG.stars) ctx.fillRect(X(st.col), Y(st.row), 1.5, 1.5);
+  }
 
   /* hills + quarry hill mass */
   let hill = mix(PAL.hillLo, PAL.hillHi, sc.g);
@@ -645,9 +697,9 @@ function paint() {
     ctx.fillRect(X(rk.col), Y(rk.row), X(rk.w) - X(0), Y(rk.h) - Y(0));
   }
 
-  /* builds */
+  /* builds — after the molt only the temple keeps its color */
   const buildC = mix(PAL.buildLo, PAL.buildHi, sc.g);
-  for (const b of sc.builds) drawSprite(b, X, Y, buildC);
+  for (const b of sc.builds) drawSprite(b, X, Y, sc.dark && b.sprite !== "temple" ? PAL.buildLo : buildC);
 
   /* flecks — the picture remembers */
   ctx.fillStyle = PAL.fleck;
@@ -655,7 +707,7 @@ function paint() {
 
   /* figures */
   for (const f of sc.figures) {
-    ctx.fillStyle = f.job === "p" ? PAL.figP : PAL.fig;
+    ctx.fillStyle = f.job === "p" || f.job === "h" ? PAL.figP : PAL.fig;
     const fx = X(f.col), fy = Y(f.row);
     ctx.fillRect(fx - 1, fy - 8, 3, 8);
     ctx.fillRect(fx - (f.away ? 2.5 : 1.5), fy - 11, 4, 3);  /* a doubter's head turns to the trees */
@@ -698,6 +750,8 @@ function drawSprite(b, X, Y, buildC) {
   } else if (b.sprite === "fire") {
     ctx.fillStyle = PAL.ember; ctx.fillRect(x - 3, y - 2, 6, 2);
     ctx.fillStyle = PAL.fire; ctx.fillRect(x - 2, y - 6, 4, 5);
+  } else if (b.sprite === "ember") {
+    ctx.fillStyle = PAL.ember; ctx.fillRect(x - 3, y - 2, 6, 2);
   } else if (b.sprite === "hollow") {
     ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 4, y - 5, 8, 8);
   } else if (b.sprite === "shrine") {
@@ -723,8 +777,9 @@ const els = {};
 ["sec-stores","sec-village","sec-bld","sec-proj","sec-shrine","sec-mir",
  "h-act","h-village","h-shrine","popLine","offer","shrineTease","surgeLine",
  "foodVal","foodRate","woodVal","woodRate","stoneVal","stoneRate","favorVal","favorRate",
- "legendVal","legendRate","faithLine","sliderRow","slider","earlyWorks",
- "row-food","row-wood","row-stone","row-favor","row-legend","bldList","projList","mirList",
+ "legendVal","legendRate","soulsVal","soulsRate","faithLine","sliderRow","slider",
+ "sendL","sendR","earlyWorks","congWorks",
+ "row-food","row-wood","row-stone","row-favor","row-legend","row-souls","bldList","projList","mirList",
  "act-berries","act-wood"].forEach(id => els[id] = $(id));
 JOBS.forEach(j => { els["job-"+j.id]=$("job-"+j.id); els["jn-"+j.id]=$("jn-"+j.id);
   els["jp-"+j.id]=$("jp-"+j.id); els["jm-"+j.id]=$("jm-"+j.id); });
@@ -763,6 +818,8 @@ function fixJobs() {
 }
 
 function buyBld(def) {
+  if (def.herald) return buyHerald();
+  if (def.recall) return recallHeralds();
   if (S.proj.tithe) return;  /* molt 2: nothing more is built by hand */
   if (def.max && S.bld[def.id] >= def.max) return;
   const c = bldCost(def);
@@ -786,6 +843,26 @@ function buyProj(def) {
 function ascend() {
   S.pop = 0; S.doubt = 0; S.doubtT = 0;
   S.jobs = { f:0, w:0, m:0, p:0, c:0 };
+  S.tithedLine = TITHED_S;  /* the one stamp the molt is allowed (law 16) */
+}
+
+/* §7.2: seeds are bought; the rest replicate. recall is whole by law 14 —
+   act 3's experiments must be free */
+function buyHerald() {
+  if (!S.proj.ascend || S.heralds >= HERALD.cap) return;
+  const c = heraldCost();
+  if (!canAfford(c)) return;
+  pay(c);
+  S.heraldSpent += c.favor; S.heraldSeeds++;
+  S.heralds = Math.min(HERALD.cap, S.heralds + 1);
+  S.seen.heraldT = 1;  /* the flavor spends itself on the first seed */
+  render(); save();
+}
+function recallHeralds() {
+  if (S.heraldSeeds < 1) return;
+  S.favor += S.heraldSpent;  /* returned, not granted: the total never moves */
+  S.heralds = 0; S.heraldSeeds = 0; S.heraldSpent = 0;
+  render(); save();
 }
 function buyMir(def) {
   const c = mirCost(def);
@@ -864,6 +941,9 @@ function checkReveals() {
   }
   if (S.proj.tithe) see("slider", els["sliderRow"], true);
   if (S.proj.tithe) see("earlyWorks", els["earlyWorks"]);
+  /* molt 3: the souls row wakes from its boot-long ghost; the congregation folds */
+  if (S.proj.ascend) see("row-souls", els["row-souls"], true);
+  if (S.proj.ascend) see("congWorks", els["congWorks"]);
   if (S.pop > 0 || S.bld.hut > 0) see("village", els["sec-village"]);
   for (const j of JOBS) if (S.seen["j:"+j.id] || j.show(S)) see("j:"+j.id, els["job-"+j.id], true);
 
@@ -924,22 +1004,24 @@ function setText(el, txt) { if (el && el.textContent !== txt) el.textContent = t
 function render() {
   checkReveals();
 
-  setText(els["foodVal"], fmtStore(S.food));
+  setText(els["foodVal"], S.proj.ascend ? "" : fmtStore(S.food));
   setText(els["woodVal"], S.proj.tithe ? "" : fmtStore(S.wood));
   setText(els["stoneVal"], S.proj.tithe ? "" : fmtStore(S.stone));
   /* the count: precision as dread — the bank stops rounding when it matters most */
   setText(els["favorVal"], S.proj.count ? S.favor.toFixed(1) : fmtStore(S.favor));
-  setText(els["foodRate"], (S.pop > 0 || prodOf("food") > 0) ? fmtRate(rateOf("food")) : "");
+  setText(els["foodRate"], !S.proj.ascend && (S.pop > 0 || prodOf("food") > 0) ? fmtRate(rateOf("food")) : "");
   setText(els["woodRate"], !S.proj.tithe && prodOf("wood") > 0 ? fmtRate(rateOf("wood")) : "");
   setText(els["stoneRate"], !S.proj.tithe && prodOf("stone") > 0 ? fmtRate(rateOf("stone")) : "");
-  /* molt 2: wood and stone leave the ledger; the slots keep their shape */
+  /* molt 2: wood and stone leave the ledger; molt 3 takes the larder the same way */
   els["row-wood"].classList.toggle("ghost", !!S.proj.tithe);
   els["row-stone"].classList.toggle("ghost", !!S.proj.tithe);
+  els["row-food"].classList.toggle("ghost", !!S.proj.ascend);
   /* the stall is a readout, not an absence: the rate reads zero until cured */
   setText(els["favorRate"], stalled() ? fmtRate(0)
-    : prodOf("favor") > 0 && S.favor < favorCap() ? fmtRate(rateOf("favor")) : "");
+    : prodOf("favor") > 0 && (S.proj.ascend || S.favor < favorCap()) ? fmtRate(rateOf("favor")) : "");
   setText(els["legendVal"], fmtStore(S.legend));
-  setText(els["legendRate"], S.turn1 && S.favor >= favorCap() ? fmtRate(LEGEND_RATE) : "");
+  setText(els["legendRate"], S.turn1 && !S.proj.ascend && S.favor >= favorCap() ? fmtRate(LEGEND_RATE) : "");
+  setText(els["soulsVal"], S.proj.ascend ? fmt(S.souls, !!S.proj.count) : "");
   /* the ceiling shown long before it is reachable is the standing threat (law 2) */
   setText(els["faithLine"], S.turn1 ? "faith " + faithOf() + (S.proj.lights ? " / " + FAITH_MAX : "") : "");
 
@@ -948,17 +1030,30 @@ function render() {
   setText(els["act-wood"], lex("act-wood"));
   setText(els["h-village"], lex("h-village"));
   setText(els["h-shrine"], lex("h-shrine"));
-  let pl = lex("popWord") + " " + S.pop + " / " + cap() +
-    (S.proj.tithe ? " · congregation " + deriveJobs().cong : " · idle " + idle());
-  if (S.proj.fire && S.pop < cap() && S.food < arriveAt())
-    pl += " · next at " + fmt(arriveAt()) + " food";
+  let pl;
+  if (S.proj.ascend) {
+    /* the stamp (§4): sixty seconds of epitaph, then the board */
+    pl = S.tithedLine > 0 ? "the first village: tithed"
+       : "worlds " + S.worlds + " / " + WORLDS_PER_SKY + " · souls " + fmt(S.souls);
+  } else {
+    pl = lex("popWord") + " " + S.pop + " / " + cap() +
+      (S.proj.tithe ? " · congregation " + deriveJobs().cong : " · idle " + idle());
+    if (S.proj.fire && S.pop < cap() && S.food < arriveAt())
+      pl += " · next at " + fmt(arriveAt()) + " food";
+  }
   setText(els["popLine"], pl);
 
   for (const j of JOBS) {
     setText(els["jn-"+j.id], String(S.jobs[j.id]));
     els["jp-"+j.id].disabled = !!S.proj.tithe || idle() < 1 || S.jobs[j.id] >= jobCapOf(j.id);
     els["jm-"+j.id].disabled = !!S.proj.tithe || S.jobs[j.id] < 1;
+    if (S.proj.ascend) els["job-"+j.id].classList.add("ghost");  /* molt 3: the rows blank, the slots hold */
   }
+  /* molt 3: the same dial, new ends — spread converts, reap collects */
+  setText(els["sendL"], S.proj.ascend ? "spread" : "fields");
+  setText(els["sendR"], S.proj.ascend ? "reap" : "shrine");
+  const slbl = S.proj.ascend ? "spread to reap" : "fields to shrine";
+  if (els["slider"].getAttribute("aria-label") !== slbl) els["slider"].setAttribute("aria-label", slbl);
   if (S.proj.tithe) {
     const v = String(Math.round(S.slider * 100));
     if (els["slider"].value !== v) els["slider"].value = v;
@@ -966,7 +1061,19 @@ function render() {
 
   for (const key of Object.keys(rowNodes)) {
     const r = rowNodes[key], def = r.def;
-    if (r.kind === "bld") {
+    if (r.kind === "bld" && def.herald) {
+      /* §7.2: at the cap the row reads `heralds 144` and the cost text empties */
+      const capped = S.heralds >= HERALD.cap;
+      setText(r.nm, capped ? "heralds" : def.name);
+      setText(r.ct, S.heralds >= 1 ? fmt(Math.floor(S.heralds)) : "");
+      setText(r.co, capped ? "" : costText(heraldCost()));
+      r.btn.disabled = capped || !canAfford(heraldCost());
+      if (S.seen.heraldT) setText(r.tease, "");
+    } else if (r.kind === "bld" && def.recall) {
+      /* the column reads what comes back: 100% of the seed cost (law 14) */
+      setText(r.co, S.heraldSeeds > 0 ? costText({ favor: S.heraldSpent }) : "");
+      r.btn.disabled = S.heraldSeeds < 1;
+    } else if (r.kind === "bld") {
       const atMax = def.max && S.bld[def.id] >= def.max;
       const c = bldCost(def);
       setText(r.ct, S.bld[def.id] > 0 ? String(S.bld[def.id]) : "");
@@ -974,6 +1081,7 @@ function render() {
       setText(r.co, (atMax || S.proj.tithe) ? "" : costText(c));
       r.btn.disabled = atMax || !!S.proj.tithe || !canAfford(c);
       if (S.bld[def.id] > 0) setText(r.tease, effLine(def));
+      r.wrap.classList.toggle("ghost", !!S.proj.ascend);  /* molt 3: the works go dark */
     } else {
       const done = r.kind === "proj" ? S.proj[def.id] : S.mir[def.id];
       /* wood and stone died at molt 2: anything still priced in them is stranded */
@@ -985,8 +1093,11 @@ function render() {
       r.btn.disabled = done || !def.cost || dead || !canAfford(c) || !!(def.audit && !def.audit(S));
       if (done) setText(r.tease, effLine(def));
       if (def.repeat && S.signs > 0) setText(r.tease, "");  /* the tease spends itself on the first sign */
-      /* the early works fold into one line */
+      /* the early works fold into one line; the congregation folds the same way */
       if (r.kind === "proj" && def.act === 1) r.wrap.classList.toggle("hidden", !!S.proj.tithe);
+      if (r.kind === "proj" && def.act === 2) r.wrap.classList.toggle("hidden", !!S.proj.ascend);
+      /* molt 3: the miracles blank; act 3's arrive in the same slots */
+      if (r.kind === "mir") r.wrap.classList.toggle("ghost", !!S.proj.ascend);
     }
   }
 
@@ -1064,8 +1175,25 @@ function tick() {
   /* the one aside the game ever volunteers (law 17) */
   if (!S.aside && S.proj.tithe && prodOf("favor") > prodOf("food")) { S.aside = true; S.asideLeft = ASIDE.s; }
   if (S.asideLeft > 0) S.asideLeft = Math.max(0, S.asideLeft - dt);
-  /* legend: the god must sit still to be storied */
-  if (S.turn1 && S.favor >= favorCap()) S.legend += LEGEND_RATE * dt;
+  /* legend: the god must sit still to be storied — and never again after the molt */
+  if (S.turn1 && !S.proj.ascend && S.favor >= favorCap()) S.legend += LEGEND_RATE * dt;
+
+  /* act 3 — the board (§7.1): spread converts and replicates; reap was paid above */
+  if (S.proj.ascend) {
+    if (S.tithedLine > 0) S.tithedLine = Math.max(0, S.tithedLine - dt);
+    const sp = 1 - S.slider;
+    if (S.heralds > 0 && sp > 0) {
+      S.heralds = Math.min(HERALD.cap, S.heralds + HERALD.grow * S.heralds * sp * dt);
+      if (S.worlds < WORLDS_PER_SKY) {
+        S.worldProg += S.heralds * sp * dt;
+        while (S.worlds < WORLDS_PER_SKY && S.worldProg >= worldNeed(S.worlds)) {
+          S.worldProg -= worldNeed(S.worlds);
+          S.souls += worldSouls(S.worlds);
+          S.worlds++;  /* the star turns red on the same render */
+        }
+      }
+    }
+  }
   S.surgeLeft = Math.max(0, S.surgeLeft - dt);
   if (S.pop > 0 || S.jobs.p > 0) S.food = Math.max(0, S.food - upkeep() * dt);
   if (ratsDrain() > 0) S.food = Math.max(0, S.food - RATS_DRAIN * dt);
@@ -1146,7 +1274,9 @@ window.__tithe = {
   JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, ANCHORS, SITES, PAL,
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE, DOUBT_S, ASIDE,
-  buyBld, buyProj, buyMir, doOffering, fixJobs, ascend,
+  TITHED_S, HERALD, WORLDS_PER_SKY, WORLD, SOUL, SKY_MULT, REAP_RATE,
+  buyBld, buyProj, buyMir, doOffering, fixJobs, ascend, buyHerald, recallHeralds,
+  heraldCost, worldNeed, worldSouls, reapRate,
   faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate, stalled, mirCost,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
   bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, jobArrive, projArrive, arriveCdS, projOutMult, effLine,

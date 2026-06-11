@@ -326,7 +326,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const G3 = boot(st2).window.__tithe;
   ok(G3.state.offerings === 0 && G3.state.turn1 === false && typeof G3.state.mir === "object",
     "a stripped save walks in with defaults");
-  ok(G3.state.v === 5, "version restamped");
+  ok(G3.state.v === 6, "version restamped");
 }
 {
   const st3 = { "tithe-save": "{broken" };
@@ -369,7 +369,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const stV = { "tithe-save": JSON.stringify(sv) };
   const GV = boot(stV).window.__tithe;
   ok(near(GV.state.surgeLeft, 30, 1.5), "a v1 stamp converts to seconds owed");
-  ok(GV.state.v === 5, "and leaves restamped");
+  ok(GV.state.v === 6, "and leaves restamped");
 }
 
 /* ---------- rats in the granary ---------- */
@@ -427,7 +427,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(GB.state.pop === 10, "the flock fits the huts");
   const JB = GB.state.jobs;
   ok(JB.f + JB.w + JB.m + JB.p <= GB.state.pop, "the jobs table follows the head count");
-  ok(GB.state.v === 5, "restamped v5");
+  ok(GB.state.v === 6, "restamped v6");
 }
 
 /* ---------- the spine: faith is born at the turn ---------- */
@@ -514,7 +514,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const GM = boot(stM).window.__tithe;
   ok(GM.state.favor === 400, "favor folds back under the cap (faith 2)");
   ok(GM.state.jobs.p === 2, "the priests fit the faith");
-  ok(GM.state.v === 5 && GM.state.universes === 1, "restamped v5; one universe, as always");
+  ok(GM.state.v === 6 && GM.state.universes === 1, "restamped v6; one universe, as always");
 }
 
 /* ---------- the cultivator: arrivals, not the larder ---------- */
@@ -874,7 +874,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
 
   /* an old save learns the new fields */
   const mg = GH.migrate({ v:4, turn1:true, pop:4, bld:{hut:2}, deeper:2 });
-  ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === 5,
+  ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === 6,
     "an old save learns the new fields at their defaults");
 }
 
@@ -987,6 +987,216 @@ ok(!!store["tithe-save"], "save written on beforeunload");
     "reload: the ceiling holds its mark");
   ok(dR2.getElementById("proj-count").querySelector(".co").textContent === "counted",
     "reload: the count keeps counting");
+}
+
+/* ---------- molt 3: the board wakes where the village was ---------- */
+
+{
+  const stA = {};
+  const wA = boot(stA).window, dA = wA.document, GA = wA.__tithe, SA = GA.state;
+  /* the village the race left behind, one frame after the door */
+  SA.proj.fire = true; SA.proj.tools = true; SA.proj.rats = true; SA.proj.shrineX = true;
+  SA.proj.temple = true; SA.proj.tithe = true; SA.proj.songs = true; SA.proj.calendar = true;
+  SA.proj.lights = true; SA.proj.ascend = true;
+  SA.mir.goodyear = true; SA.mir.obedience = true;
+  SA.bld.hut = 5; SA.bld.farm = 3; SA.bld.quarry = 1; SA.bld.sawpit = 1; SA.bld.granary = 1;
+  SA.turn1 = true; SA.offerings = 21; SA.nameIdx = 22; SA.deeper = 4;
+  SA.totalFavor = 3000; SA.totalFood = 6000; SA.totalWood = 400; SA.totalStone = 300;
+  SA.pop = 2; SA.jobs = { f:0, w:0, m:0, p:0, c:0 };
+  SA.favor = 500; SA.food = 6000; SA.legend = 12; SA.slider = 0.5; SA.tithedLine = 60;
+  const tk = s => { SA.last = Date.now() - (s ? s * 1000 : 1); GA.tick(); };
+  tk();            /* reveals fire while two stragglers stand */
+  SA.pop = 0; tk(); /* then the village is empty, as the door left it */
+
+  /* the frame (§4): every piece in its place and the meaning changed */
+  ok(dA.getElementById("popLine").textContent === "the first village: tithed",
+    "the population line is an epitaph");
+  ok(dA.getElementById("foodVal").textContent === "" &&
+     dA.getElementById("row-food").classList.contains("ghost"),
+    "the larder leaves the ledger the way wood did");
+  ok(!dA.getElementById("row-souls").classList.contains("ghost") &&
+     dA.getElementById("soulsVal").textContent === "0",
+    "the souls row wakes from its boot-long ghost");
+  ok(dA.getElementById("sendL").textContent === "spread" &&
+     dA.getElementById("sendR").textContent === "reap",
+    "the same dial, new ends");
+  ok(["f","w","m","p","c"].every(j => dA.getElementById("job-" + j).classList.contains("ghost")),
+    "the jobs rows blank; the slots hold");
+  ok(["hut","farm","quarry","sawpit","granary"].every(id =>
+     dA.getElementById("bld-" + id).parentElement.classList.contains("ghost")),
+    "the works go dark");
+  const herBtn = dA.getElementById("bld-herald");
+  ok(!!herBtn && herBtn.querySelector(".nm").textContent === "a herald" &&
+     herBtn.querySelector(".co").textContent === "400 favor",
+    "one new tenant in the works list");
+  ok(herBtn.parentElement.querySelector(".tease").textContent === "it walks until it is heard.",
+    "and it says the one thing it ever says");
+  ok(!dA.getElementById("bld-recall"), "no recall before the first seed");
+  ok(!dA.getElementById("congWorks").classList.contains("hidden") &&
+     dA.getElementById("congWorks").textContent === "the congregation — done",
+    "the congregation folds to one line");
+  ok(["temple","tithe","songs","calendar","count","lights","ascend"].every(id =>
+     dA.getElementById("proj-" + id).parentElement.classList.contains("hidden")),
+    "the act-2 rows are folded away");
+  ok(["goodyear","obedience","quickening"].every(id =>
+     dA.getElementById("mir-" + id).parentElement.classList.contains("ghost")),
+    "the miracles blank; the slots wait");
+  ok(dA.getElementById("act-berries").classList.contains("ghost"),
+    "the first verb is gone");
+  const fd0 = SA.food;
+  dA.getElementById("act-berries").click();
+  ok(SA.food === fd0, "and clicking where it was grants nothing");
+
+  /* the field (§4): dark, still, and always the board */
+  let scA = GA.villageScene();
+  ok(scA.dark === true, "the field knows the village is over");
+  ok(scA.builds.some(b => b.sprite === "ember") && !scA.builds.some(b => b.sprite === "fire"),
+    "the fire is out; the hearth remains");
+  ok(scA.builds.some(b => b.sprite === "temple"), "the temple alone keeps its post");
+  ok(scA.smoke.length === 0, "the smoke stops");
+  ok(scA.figures.length === 0, "the figures are gone");
+  ok(scA.flecks.length === 21, "the flecks remain — the picture still remembers");
+  SA.arriveCd = 10;
+  ok(GA.villageScene().walker === null, "no walker, ever again: no road leads here");
+  SA.arriveCd = 0;
+  ok(Array.isArray(scA.stars) && scA.stars.length === 14 &&
+     scA.stars.every(st => st.state === "lit"),
+    "fourteen stars, drawn since first boot, now lit to take");
+
+  /* the stamp expires; the board reads out */
+  tk(61);
+  ok(dA.getElementById("popLine").textContent === "worlds 0 / 14 · souls 0",
+    "sixty seconds, then the ledger of lights");
+
+  /* a herald: four hundred favor, then the ladder */
+  herBtn.click();
+  ok(near(SA.favor, 100, 0.01) && SA.heralds === 1 && SA.heraldSeeds === 1 && SA.heraldSpent === 400,
+    "the first seed is bought");
+  ok(herBtn.querySelector(".co").textContent === "500 favor", "the next costs a quarter again");
+  ok(herBtn.parentElement.querySelector(".tease").textContent === "",
+    "the flavor spends itself on the first seed");
+  const recBtn = dA.getElementById("bld-recall");
+  ok(!!recBtn && recBtn.querySelector(".co").textContent === "400 favor",
+    "recall appears, reading exactly what came in");
+  ok(GA.villageScene().figures.some(f => f.job === "h" && f.row === 5.6),
+    "one red figure on the ridgeline");
+
+  /* spread converts and replicates (§7.1, §7.2) */
+  SA.slider = 0;  /* full spread */
+  tk(10);
+  ok(near(SA.heralds, 1.2, 0.01), "it walks until it is heard: heralds replicate");
+  ok(near(SA.worldProg, 12, 0.1) && SA.worlds === 0, "twelve herald-seconds toward the first world");
+  tk(30);
+  ok(SA.worlds === 1 && SA.souls === 1e6, "the first world is tithed: a million souls");
+  ok(near(SA.heralds, 1.92, 0.01) && near(SA.worldProg, 29.6, 0.2),
+    "the spill carries into the second world");
+  scA = GA.villageScene();
+  ok(scA.stars[0].state === "red" && scA.stars.filter(st => st.state === "red").length === 1,
+    "the first star turns the only red the game owns");
+  ok(dA.getElementById("popLine").textContent === "worlds 1 / 14 · souls 1m",
+    "the flock line counts worlds now");
+  ok(dA.getElementById("soulsVal").textContent === "1m", "a million, spelled small");
+  SA.proj.count = true; GA.render();
+  ok(dA.getElementById("soulsVal").textContent === "1.0m", "the count keeps its tenth even here");
+
+  /* reap pays favor; the cap and the legend died with the flock */
+  SA.slider = 1;  /* full reap */
+  const f1 = SA.favor, t1 = SA.totalFavor, l1 = SA.legend;
+  tk(10);
+  ok(near(SA.favor, f1 + 8, 0.05) && near(SA.totalFavor, t1 + 8, 0.05),
+    "one world pays eight favor in ten seconds");
+  ok(near(SA.heralds, 1.92, 0.01) && near(SA.worldProg, 29.6, 0.2),
+    "at full reap the board holds its breath");
+  SA.favor = 5000;  /* far past the old cap */
+  tk(10);
+  ok(near(SA.favor, 5008, 0.05), "the cap died with the flock that set it");
+  ok(SA.legend === l1, "legend never accrues again");
+  ok(dA.getElementById("legendRate").textContent === "", "its rate line stays empty");
+  ok(dA.getElementById("favorRate").textContent === "+0.80/s", "the reap reads on the favor line");
+
+  /* recall: 100% of the seed cost, any time (law 14) */
+  SA.favor = 1000;
+  herBtn.click();
+  ok(SA.heraldSeeds === 2 && SA.heraldSpent === 900 && near(SA.favor, 500, 0.01),
+    "a second seed at five hundred");
+  ok(herBtn.querySelector(".ct").textContent === "2", "the count floors the fraction");
+  const t2 = SA.totalFavor;
+  recBtn.click();
+  ok(near(SA.favor, 1400, 0.01) && SA.heralds === 0 && SA.heraldSeeds === 0 && SA.heraldSpent === 0,
+    "every seed favor comes home; the heralds do not");
+  ok(SA.totalFavor === t2, "returned, not granted: the total never moves");
+  ok(herBtn.querySelector(".co").textContent === "400 favor" && herBtn.querySelector(".ct").textContent === "",
+    "the ladder resets to its first rung");
+  ok(recBtn.disabled && recBtn.querySelector(".co").textContent === "",
+    "recall goes quiet with nothing out");
+
+  /* the cap is a fibonacci square: 144, and the cost text empties */
+  SA.worlds = 14;  /* a full sky holds the board still */
+  SA.heralds = 143.5; SA.heraldSeeds = 5; SA.heraldSpent = 2000; SA.slider = 0;
+  tk(10);
+  ok(SA.heralds === 144, "one hundred forty-four, and not one more");
+  ok(herBtn.querySelector(".nm").textContent === "heralds" &&
+     herBtn.querySelector(".ct").textContent === "144" &&
+     herBtn.querySelector(".co").textContent === "" && herBtn.disabled,
+    "the row reads heralds 144 and the cost text empties");
+  ok(GA.villageScene().figures.filter(f => f.job === "h").length === 7,
+    "never more than seven on the ridgeline");
+
+  /* the last world of the sky; the board stops at fourteen */
+  SA.worlds = 13; SA.worldProg = 0; SA.souls = 0; SA.heralds = 10;
+  SA.heraldSeeds = 3; SA.heraldSpent = 1525;
+  tk(1802);
+  ok(SA.worlds === 14 && SA.souls === 1594323e6, "the fourteenth world: the sky total lands");
+  ok(GA.fmt(SA.souls) === "1.6t", "spelled in trillions, quietly");
+  const s14 = SA.souls;
+  tk(10);
+  ok(SA.worlds === 14 && SA.souls === s14, "a full sky converts nothing more");
+  ok(dA.getElementById("popLine").textContent === "worlds 14 / 14 · souls 1.6t",
+    "the line reads a finished sky");
+
+  /* reload: the board survives the night */
+  SA.heralds = 12.7;
+  wA.dispatchEvent(new wA.Event("beforeunload"));
+  const wA2 = boot(stA).window, dA2 = wA2.document, GA2 = wA2.__tithe;
+  ok(GA2.state.worlds === 14 && GA2.state.souls === s14 && near(GA2.state.heralds, 12.7, 0.01),
+    "reload: worlds, souls, heralds all kept");
+  ok(dA2.getElementById("bld-herald").querySelector(".co").textContent === "782 favor",
+    "reload: the ladder holds its third rung");
+  ok(dA2.getElementById("bld-recall").querySelector(".co").textContent === "1.5k favor",
+    "reload: recall still reads the way home");
+  ok(dA2.getElementById("sendL").textContent === "spread" &&
+     dA2.getElementById("popLine").textContent === "worlds 14 / 14 · souls 1.6t",
+    "reload: the board is still the board");
+  ok(!dA2.getElementById("row-souls").classList.contains("ghost"),
+    "reload: the souls row stays awake");
+
+  /* an old save learns the board's fields */
+  const mgA = GA.migrate({ v:5, turn1:true, pop:4, bld:{hut:2} });
+  ok(mgA.heraldSeeds === 0 && mgA.worldProg === 0 && mgA.tithedLine === 0 && mgA.v === 6,
+    "a v5 save learns the board at its defaults");
+
+  /* the spelled suffixes (§7.1) */
+  ok(GA.fmt(1e9) === "1b" && GA.fmt(2.4e12) === "2.4t" &&
+     GA.fmt(2.4e15) === "2.4qa" && GA.fmt(3.1e18) === "3.1qi",
+    "fmt climbs to the quintillion");
+  ok(GA.fmt(1500, true) === "1.5k" && GA.fmt(1000, true) === "1.0k" && GA.fmt(5, true) === "5.0",
+    "and the count keeps the tenth at every rung");
+}
+
+/* ---------- before the molt, the board does not exist ---------- */
+
+{
+  const stP = {};
+  const GP = boot(stP).window.__tithe, dP = boot(stP).window.document;
+  ok(GP.villageScene().stars === null, "no board before ascension");
+  GP.buyHerald();
+  ok(GP.state.heralds === 0, "no herald walks before the door opens");
+  ok(!dP.getElementById("bld-herald"), "the works list does not know the word yet");
+  ok(dP.getElementById("row-souls").classList.contains("ghost"),
+    "the souls row sits as a ghost from first boot");
+  ok(dP.getElementById("sendL").textContent === "fields" &&
+     dP.getElementById("sendR").textContent === "shrine",
+    "the dial keeps its old ends");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */
