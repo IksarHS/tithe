@@ -190,6 +190,11 @@ const PROJ = [
   { id:"ascend",  name:"ascension",          flavor:"begin again. the village will not remember. you will.",
     cost:{favor:2000}, costLine:"13 faith + the flock + 2,000 favor",
     audit:s=>faithOf(s)>=FAITH_MAX, done:"begun", show:s=>s.proj.lights, act:2 },
+  /* act 3 (§7.4): the doors are billed in souls; the end is billed in heralds */
+  { id:"sky",  name:"another sky",   flavor:"the dark is not empty yet.", sky:true, act:3,
+    show:s=>!!s.proj.ascend && s.worlds>=WORLDS_PER_SKY },
+  { id:"last", name:"the last star", flavor:"", costLine:"all the heralds", done:"dark", last:true, act:3,
+    show:s=>s.galaxy===2 && s.worlds>=WORLDS_PER_SKY-1 },
 ];
 
 const MIR = [
@@ -245,12 +250,13 @@ const DOUBT_S  = 90;                   // seconds between doubts, while any rema
 const TITHED_S = 60;                   // the stamp: sixty seconds of epitaph, then the board
 const HERALD   = { cost:400, rate:1.25, grow:0.02, cap:144 };
 const WORLDS_PER_SKY = 14;
-const WORLD    = { base:40, rate:1.6 };// herald-seconds for world i: base x rate^i
+const WORLD    = { base:40, rate:1.55 };// herald-seconds for world i: base x rate^i (M8: 1.6 made the back half of a sky outlast the 8-min contract)
 const SOUL     = { base:1e6, rate:3 }; // souls on conversion: base x rate^i x sky mult
 const SKY_MULT = 1000;                 // each sky multiplies souls and favor alike
-const REAP_RATE = 0.8;                 // favor/s per tithed world at full reap
+const REAP_RATE = 4;                   // favor/s per tithed world at full reap — a world out-pays the village
 const SILENCE  = { born:5, every:40, mult:2 }; // born at the fifth world; dims one light per 40s; a dim world costs x2
 const VIGIL_RATE = 8;                  // favor/s x 1000^g while the vigil is held
+const SKY_DOOR = 2.0e12;               // souls; the second door costs x1000 — the tithe spends the tithed
 const CAP_HUT  = 2;
 const OFFLINE_CAP_S = 3600;
 const FIG_MAX  = 24;
@@ -438,11 +444,12 @@ const heraldCost = () => ({ favor: Math.ceil(HERALD.cost * Math.pow(HERALD.rate,
 const worldNeed  = i => WORLD.base * Math.pow(WORLD.rate, i);
 const worldSouls = i => SOUL.base * Math.pow(SOUL.rate, i) * Math.pow(SKY_MULT, S.galaxy);
 /* each tithed world pays for attention; the slider's right share is the asking */
-const reapRate = () => S.proj.ascend ? S.worlds * REAP_RATE * Math.pow(SKY_MULT, S.galaxy) * S.slider : 0;
+const reapRate = () => S.proj.ascend && !S.endState ? S.worlds * REAP_RATE * Math.pow(SKY_MULT, S.galaxy) * S.slider : 0;
 /* the silence (§7.3): the vigil's asking, the hush's term, the tongues' doubling */
 const vigilCost  = () => VIGIL_RATE * Math.pow(SKY_MULT, S.galaxy);
 const hushActive = () => S.mir.hush === S.galaxy + 1;  /* the hush is bought per sky */
 const convMult   = () => S.mir.tongues ? 2 : 1;
+const skyCost    = () => SKY_DOOR * Math.pow(SKY_MULT, S.galaxy);
 
 /* molt 2: one slider decides, the rows report. fields hands feed first;
    whoever the larder spares tends the cradles; the shrine takes the rest,
@@ -617,7 +624,8 @@ function villageScene() {
     state: i < S.worlds ? "red" : i < S.worlds + S.faint ? "faint" : "lit",
   }));
 
-  return { g: glowT(), r: redT(), dark: !!S.proj.ascend, builds, figures, flecks, smoke, walker, stars };
+  /* §7.4: each sky is dimmer than the last — the re-roll is visible, not announced */
+  return { g: glowT(), r: redT(), dark: !!S.proj.ascend, sky: S.galaxy, builds, figures, flecks, smoke, walker, stars };
 }
 
 /* ============================== field: painter ============================== */
@@ -655,7 +663,7 @@ function paint() {
   const cw = cv.clientWidth, chh = cv.clientHeight;
   if (!cw || !chh) return;
   const sc = villageScene();
-  const key = [sc.g.toFixed(2), sc.r.toFixed(2), sc.dark ? 1 : 0,
+  const key = [sc.g.toFixed(2), sc.r.toFixed(2), sc.dark ? 1 : 0, sc.sky,
     sc.builds.map(b=>b.sprite+b.col).join(","), sc.flecks.length,
     sc.figures.map(f=>(f.col).toFixed(1)+","+(f.row).toFixed(1)).join(";"),
     sc.smoke.map(s=>s.row.toFixed(1)).join(","),
@@ -674,9 +682,11 @@ function paint() {
   if (sc.r > 0) sky = mix(sky, PAL.skyRed, sc.r);
   ctx.fillStyle = sky; ctx.fillRect(0, 0, cw, chh);
   if (sc.stars) {
-    /* the board: a tithed world keeps the only red the game owns */
+    /* the board: a tithed world keeps the only red the game owns.
+       §7.4: each sky's unlit stars run dimmer — the relight is never as bright */
+    const lit = sc.sky > 0 ? mix(PAL.starLit, PAL.starFaint, sc.sky * 0.35) : PAL.starLit;
     for (const st of sc.stars) {
-      ctx.fillStyle = st.state === "red" ? PAL.fleck : st.state === "faint" ? PAL.starFaint : PAL.starLit;
+      ctx.fillStyle = st.state === "red" ? PAL.fleck : st.state === "faint" ? PAL.starFaint : lit;
       ctx.fillRect(X(st.col), Y(st.row), 2.5, 2.5);
     }
   } else {
@@ -843,6 +853,8 @@ function buyBld(def) {
   render(); save();
 }
 function buyProj(def) {
+  if (def.sky) return openSky();
+  if (def.last) return takeLastStar();
   if (S.proj[def.id] || !def.cost || !canAfford(def.cost)) return;
   if (def.audit && !def.audit(S)) return;  /* the door audits every wallet (law 12) */
   /* the tithe was wood and stone's last bill: the old ledgers never open again */
@@ -864,7 +876,7 @@ function ascend() {
 /* §7.2: seeds are bought; the rest replicate. recall is whole by law 14 —
    act 3's experiments must be free */
 function buyHerald() {
-  if (!S.proj.ascend || S.heralds >= HERALD.cap) return;
+  if (!S.proj.ascend || S.heralds >= HERALD.cap || S.endState) return;
   const c = heraldCost();
   if (!canAfford(c)) return;
   pay(c);
@@ -877,6 +889,25 @@ function recallHeralds() {
   if (S.heraldSeeds < 1) return;
   S.favor += S.heraldSpent;  /* returned, not granted: the total never moves */
   S.heralds = 0; S.heraldSeeds = 0; S.heraldSpent = 0;
+  render(); save();
+}
+/* §7.4: the doors are billed in souls — the tithe spends the tithed */
+function openSky() {
+  if (S.worlds < WORLDS_PER_SKY || S.galaxy >= 2 || S.souls < skyCost()) return;
+  S.souls -= skyCost();
+  S.galaxy++;
+  /* the door is narrow: of a gross of heralds, a dozen cross (§7.4) */
+  if (S.heralds > 1) S.heralds = Math.max(1, Math.sqrt(S.heralds));
+  S.worlds = 0; S.worldProg = 0; S.faint = 0; S.dimT = 0;  /* re-roll: 14 stars relight */
+  render(); save();
+}
+/* §7.4: the last star is billed in the one thing the player believed was theirs */
+function takeLastStar() {
+  if (S.proj.last || S.galaxy !== 2 || S.worlds !== WORLDS_PER_SKY - 1 || S.heralds < 1) return;
+  S.souls += worldSouls(WORLDS_PER_SKY - 1);
+  S.worlds = WORLDS_PER_SKY;
+  S.heralds = 0; S.heraldSeeds = 0; S.heraldSpent = 0; S.faint = 0; S.dimT = 0;
+  S.proj.last = true; S.endState = 1;  /* every rate reads 0.0 from here */
   render(); save();
 }
 function buyMir(def) {
@@ -1032,12 +1063,14 @@ function render() {
   els["row-wood"].classList.toggle("ghost", !!S.proj.tithe);
   els["row-stone"].classList.toggle("ghost", !!S.proj.tithe);
   els["row-food"].classList.toggle("ghost", !!S.proj.ascend);
-  /* the stall is a readout, not an absence: the rate reads zero until cured */
-  setText(els["favorRate"], stalled() ? fmtRate(0)
+  /* the stall is a readout, not an absence: the rate reads zero until cured.
+     after the last star the zero is permanent — the first zero that will never move (§8) */
+  setText(els["favorRate"], S.endState ? "0.0/s" : stalled() ? fmtRate(0)
     : prodOf("favor") > 0 && (S.proj.ascend || S.favor < favorCap()) ? fmtRate(rateOf("favor")) : "");
   setText(els["legendVal"], fmtStore(S.legend));
   setText(els["legendRate"], S.turn1 && !S.proj.ascend && S.favor >= favorCap() ? fmtRate(LEGEND_RATE) : "");
   setText(els["soulsVal"], S.proj.ascend ? fmt(S.souls, !!S.proj.count) : "");
+  setText(els["soulsRate"], S.endState ? "0.0/s" : "");
   /* the ceiling shown long before it is reachable is the standing threat (law 2) */
   setText(els["faithLine"], S.turn1 ? "faith " + faithOf() + (S.proj.lights ? " / " + FAITH_MAX : "") : "");
 
@@ -1082,8 +1115,8 @@ function render() {
       const capped = S.heralds >= HERALD.cap;
       setText(r.nm, capped ? "heralds" : def.name);
       setText(r.ct, S.heralds >= 1 ? fmt(Math.floor(S.heralds)) : "");
-      setText(r.co, capped ? "" : costText(heraldCost()));
-      r.btn.disabled = capped || !canAfford(heraldCost());
+      setText(r.co, capped || S.endState ? "" : costText(heraldCost()));
+      r.btn.disabled = capped || S.endState || !canAfford(heraldCost());
       if (S.seen.heraldT) setText(r.tease, "");
     } else if (r.kind === "bld" && def.recall) {
       /* the column reads what comes back: 100% of the seed cost (law 14) */
@@ -1094,6 +1127,17 @@ function render() {
       setText(r.ct, S.vigil ? "held" : "");
       setText(r.co, hushActive() ? "" : fmt(vigilCost()) + " favor/s");
       r.btn.disabled = false;
+    } else if (r.kind === "proj" && def.sky) {
+      /* §7.4: the same row, mutated price — two doors, then a dead line under the third sky */
+      setText(r.ct, "");
+      setText(r.co, S.galaxy >= 2 ? "" : costText({ souls: skyCost() }));
+      r.btn.disabled = S.galaxy >= 2 || S.worlds < WORLDS_PER_SKY || S.souls < skyCost();
+      if (S.galaxy > 0) setText(r.tease, "");  /* the dark answered once; the flavor is spent */
+    } else if (r.kind === "proj" && def.last) {
+      /* §7.4: the price column says what it costs; the wallet cannot audit children */
+      setText(r.ct, "");
+      setText(r.co, S.proj.last ? def.done : def.costLine);
+      r.btn.disabled = !!S.proj.last || S.galaxy !== 2 || S.worlds !== WORLDS_PER_SKY - 1 || S.heralds < 1;
     } else if (r.kind === "bld") {
       const atMax = def.max && S.bld[def.id] >= def.max;
       const c = bldCost(def);
@@ -1199,16 +1243,19 @@ function tick() {
   /* legend: the god must sit still to be storied — and never again after the molt */
   if (S.turn1 && !S.proj.ascend && S.favor >= favorCap()) S.legend += LEGEND_RATE * dt;
 
-  /* act 3 — the board (§7.1): spread converts and replicates; reap was paid above */
-  if (S.proj.ascend) {
+  /* act 3 — the board (§7.1): spread converts and replicates; reap was paid above.
+     after the last star there is nothing left to spread to (§8) */
+  if (S.proj.ascend && !S.endState) {
     if (S.tithedLine > 0) S.tithedLine = Math.max(0, S.tithedLine - dt);
     const sp = 1 - S.slider;
     if (S.heralds > 0 && sp > 0) {
       S.heralds = Math.min(HERALD.cap, S.heralds + HERALD.grow * S.heralds * sp * dt);
-      if (S.worlds < WORLDS_PER_SKY) {
+      /* §7.4: in the third sky the heralds stop one short — the last star is taken by hand */
+      const lim = WORLDS_PER_SKY - (S.galaxy === 2 ? 1 : 0);
+      if (S.worlds < lim) {
         S.worldProg += S.heralds * sp * dt * convMult();
         /* a dimmed world costs double — a stall, never a loss (§7.1) */
-        while (S.worlds < WORLDS_PER_SKY &&
+        while (S.worlds < lim &&
                S.worldProg >= worldNeed(S.worlds) * (S.faint > 0 ? SILENCE.mult : 1)) {
           S.worldProg -= worldNeed(S.worlds) * (S.faint > 0 ? SILENCE.mult : 1);
           S.souls += worldSouls(S.worlds);
@@ -1316,9 +1363,9 @@ window.__tithe = {
   JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, ANCHORS, SITES, PAL,
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE, DOUBT_S, ASIDE,
-  TITHED_S, HERALD, WORLDS_PER_SKY, WORLD, SOUL, SKY_MULT, REAP_RATE, SILENCE, VIGIL_RATE,
-  buyBld, buyProj, buyMir, doOffering, fixJobs, ascend, buyHerald, recallHeralds,
-  heraldCost, worldNeed, worldSouls, reapRate, vigilCost, hushActive, convMult,
+  TITHED_S, HERALD, WORLDS_PER_SKY, WORLD, SOUL, SKY_MULT, REAP_RATE, SILENCE, VIGIL_RATE, SKY_DOOR,
+  buyBld, buyProj, buyMir, doOffering, fixJobs, ascend, buyHerald, recallHeralds, openSky, takeLastStar,
+  heraldCost, worldNeed, worldSouls, reapRate, vigilCost, hushActive, convMult, skyCost,
   faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate, stalled, mirCost,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
   bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, jobArrive, projArrive, arriveCdS, projOutMult, effLine,

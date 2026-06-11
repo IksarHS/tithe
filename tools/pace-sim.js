@@ -72,6 +72,19 @@ const MIR = {
 };
 const CULT_ARRIVE = 0.85;    /* per cultivator (jobs.c) */
 
+/* act 3 — the board, the silence, the skies (§7) */
+const HERALD3 = { cost: 400, rate: 1.25, grow: 0.02, cap: 144 };
+const WORLDS_PER_SKY = 14;
+const WORLD3 = { base: 40, rate: 1.55 };  /* herald-seconds for world i */
+const SOUL3  = { base: 1e6, rate: 3 };
+const SKY_MULT = 1000;
+const REAP_RATE = 4;
+const SILENCE3 = { born: 5, every: 40, mult: 2 };
+const VIGIL_RATE = 8;
+const SKY_DOOR = 2.0e12;
+const MIR3 = { tongues: 1200, hush: 2500 };  /* hush scales x1000^g; tongues never does */
+const SEED_BANK = 400;    /* the first seed — the favor cap (2,600) is the ceiling on the stake */
+
 const CLICK_RATE = 0.8;   // clicks/s — a relaxed human; clickPower 1, x2 with tools
 const DT = 0.25;          // sim step
 const WANT_P = 3;         // priests the bot chases after the turn
@@ -139,6 +152,9 @@ function freshSim() {
     proj: {}, mir: {}, offerings: 0, surgeLeft: 0, arriveCd: 0, ratsSeen: false,
     deeper: 0, legend: 0, faithSeen: 0,
     doubt: 0, doubtT: 0, signs: 0, cong: 0,
+    heralds: 0, heraldSeeds: 0, worlds: 0, worldProg: 0, souls: 0, galaxy: 0,
+    slider: 0, silenceBorn: false, silenceT: 0, faint: 0, dimT: 0, vigil: false, hush: 0,
+    endState: 0,
     minFoodRate3p: Infinity,
     events: [],
   };
@@ -229,7 +245,10 @@ function tickSim(s, click) {
 
 /* the race: one slider, one ladder, one bank (law 20) */
 function stepRace(s) {
-  if (faithOf(s) >= FAITH_MAX && s.favor >= PROJ.ascend.cost.favor) {
+  /* the wallet crosses (§4): nobody ascends broke — the bot banks the first
+     three seeds' favor on top of the bill, as a player staring at
+     `a herald — 400 favor` would */
+  if (faithOf(s) >= FAITH_MAX && s.favor >= PROJ.ascend.cost.favor + SEED_BANK) {
     s.favor -= PROJ.ascend.cost.favor; s.proj.ascend = true;
     s.pop = 0; s.doubt = 0;
     mark(s, "ascension — molt 3"); return;
@@ -267,6 +286,94 @@ function stepRace(s) {
   s.jobs = { f: dv.f, w: 0, m: 0, p: dv.p, c: dv.c };
   s.cong = dv.cong;
   tickSim(s, "food");
+}
+
+/* ---------- act 3: the board, the silence, the skies (§7) ---------- */
+const heraldCostS = s => Math.ceil(HERALD3.cost * Math.pow(HERALD3.rate, s.heraldSeeds));
+const worldNeedS  = i => WORLD3.base * Math.pow(WORLD3.rate, i);
+const worldSoulsS = (s, i) => SOUL3.base * Math.pow(SOUL3.rate, i) * Math.pow(SKY_MULT, s.galaxy);
+const vigilCostS  = s => VIGIL_RATE * Math.pow(SKY_MULT, s.galaxy);
+const hushCostS   = s => MIR3.hush * Math.pow(SKY_MULT, s.galaxy);
+const hushOn      = s => s.hush === s.galaxy + 1;
+const skyCostS    = s => SKY_DOOR * Math.pow(SKY_MULT, s.galaxy);
+
+/* mirror of the game's act-3 tick: reap first, then spread, then the silence */
+function tickBoard(s) {
+  s.favor += s.worlds * REAP_RATE * Math.pow(SKY_MULT, s.galaxy) * s.slider * DT;
+  const sp = 1 - s.slider, conv = s.mir.tongues ? 2 : 1;
+  if (s.heralds > 0 && sp > 0) {
+    s.heralds = Math.min(HERALD3.cap, s.heralds + HERALD3.grow * s.heralds * sp * DT);
+    /* §7.4 mirror: in the third sky the heralds stop one short of the last star */
+    const lim = WORLDS_PER_SKY - (s.galaxy === 2 ? 1 : 0);
+    if (s.worlds < lim) {
+      s.worldProg += s.heralds * sp * DT * conv;
+      while (s.worlds < lim &&
+             s.worldProg >= worldNeedS(s.worlds) * (s.faint > 0 ? SILENCE3.mult : 1)) {
+        s.worldProg -= worldNeedS(s.worlds) * (s.faint > 0 ? SILENCE3.mult : 1);
+        s.souls += worldSoulsS(s, s.worlds);
+        s.worlds++;
+        if (s.faint > 0) s.faint--;  /* relit by being taken */
+      }
+    }
+  }
+  if (!s.silenceBorn && s.worlds >= SILENCE3.born) {
+    s.silenceBorn = true; s.dimT = 0; s.faint = Math.min(1, WORLDS_PER_SKY - s.worlds);
+    mark(s, "the silence — a light goes faint");
+  }
+  if (s.silenceBorn) {
+    s.silenceT += DT;
+    const vc = hushOn(s) ? 0 : vigilCostS(s) * DT;
+    if (s.vigil && s.favor >= vc) { s.favor -= vc; s.dimT = 0; }
+    else {
+      if (s.vigil) s.vigil = false;
+      s.dimT += DT;
+      while (s.dimT >= SILENCE3.every && s.faint < WORLDS_PER_SKY - s.worlds) {
+        s.dimT -= SILENCE3.every; s.faint++;
+      }
+      if (s.faint >= WORLDS_PER_SKY - s.worlds) s.dimT = 0;
+    }
+  }
+  s.t += DT;
+}
+
+/* the board bot: seed, spread, split the dial for the vigil when the reap
+   can carry it, take the doors the moment they open */
+function stepBoard(s) {
+  /* the doors and the end */
+  if (s.worlds >= WORLDS_PER_SKY && s.galaxy < 2 && s.souls >= skyCostS(s)) {
+    s.souls -= skyCostS(s); s.galaxy++;
+    /* the door is narrow: of a gross of heralds, a dozen cross (§7.4) */
+    if (s.heralds > 1) s.heralds = Math.max(1, Math.sqrt(s.heralds));
+    s.worlds = 0; s.worldProg = 0; s.faint = 0; s.dimT = 0;
+    mark(s, "another sky — " + (s.galaxy + 1)); tickBoard(s); return;
+  }
+  if (s.galaxy === 2 && s.worlds === WORLDS_PER_SKY - 1 && s.heralds >= 1) {
+    s.souls += worldSoulsS(s, WORLDS_PER_SKY - 1);
+    s.worlds = WORLDS_PER_SKY; s.heralds = 0; s.heraldSeeds = 0;
+    s.endState = 1; mark(s, "the last star — dark"); return;
+  }
+  /* shopping, one bill a step; seeds past the first are incidental */
+  if ((s.heraldSeeds < 1 || (s.heraldSeeds < 3 && s.worlds >= 4)) && s.favor >= heraldCostS(s)) {
+    s.favor -= heraldCostS(s); s.heraldSeeds++; s.heralds++;
+    if (s.heraldSeeds === 1) mark(s, "a herald — the first seed");
+  } else if (!s.mir.tongues && s.heralds >= HERALD3.cap * 0.9 && s.favor >= MIR3.tongues) {
+    s.favor -= MIR3.tongues; s.mir.tongues = true; mark(s, "tongues — every door opens from inside");
+  } else if (s.silenceBorn && s.silenceT >= 90 && !hushOn(s) && s.faint < WORLDS_PER_SKY - s.worlds &&
+             s.favor >= hushCostS(s) + vigilCostS(s) * 30) {
+    s.favor -= hushCostS(s); s.hush = s.galaxy + 1; mark(s, "the hush — sky " + (s.galaxy + 1));
+  }
+  /* the vigil: pay-as-you-go from the moment the silence is born — a dim
+     doubles a world, and the doubled worlds cost more than the watch */
+  s.vigil = hushOn(s) || (s.silenceBorn && s.favor >= vigilCostS(s) * DT);
+  /* the dial: the vigil names its reap share; tongues waits for the cap, then
+     a hard burst — reaping while the heralds still grow stretches the sky */
+  const M = Math.pow(SKY_MULT, s.galaxy);
+  const bill = s.heraldSeeds < 1 ? heraldCostS(s)
+             : !s.mir.tongues && s.heralds >= HERALD3.cap * 0.9 ? MIR3.tongues : 0;
+  const vigilShare = s.vigil && !hushOn(s) && s.worlds > 0
+    ? Math.min(0.6, vigilCostS(s) * 1.15 / (s.worlds * REAP_RATE * M)) : 0;
+  s.slider = Math.min(0.7, vigilShare + (bill > 0 && s.favor < bill && s.worlds >= 2 ? 0.45 : 0));
+  tickBoard(s);
 }
 
 /* bot goal: what to buy next, what to click toward it */
@@ -331,6 +438,8 @@ function step(s, allowOffer) {
 /* ---------- run A: the bot that answers ---------- */
 const A = freshSim();
 while (!A.proj.ascend && A.t < 1800) step(A, true);
+/* act 3: the same bot keeps the same hands until the last star */
+while (A.proj.ascend && !A.endState && A.t < 3600) stepBoard(A);
 
 const at = label => { const e = A.events.find(e => e.label === label || e.label.startsWith(label)); return e ? e.t : Infinity; };
 const tVillager = at("villager 1");
@@ -343,6 +452,10 @@ const tFaith4   = at("faith 4");
 const tTemple   = at("temple");
 const tTithe    = at("the tithe — molt 2");
 const tAscend   = at("ascension — molt 3");
+const tSky2     = at("another sky — 2");
+const tSky3     = at("another sky — 3");
+const tDark     = at("the last star — dark");
+const skyLen    = [tSky2 - tAscend, tSky3 - tSky2, tDark - tSky3];
 
 /* gaps between events up to the excavation */
 const pre = A.events.filter(e => e.t <= tHollow);
@@ -373,7 +486,8 @@ console.log("  refusal: " + Math.round(300) + "s past the hollow without offerin
 console.log("  three priests: worst food rate " + (A.minFoodRate3p === Infinity ? "n/a" : A.minFoodRate3p.toFixed(2) + "/s") + " (the squeeze the appetite tuning watches)");
 const ms = A.moltSnap || {};
 console.log("  at the molt: favor " + Math.round(ms.favor) + " · totalFavor " + Math.round(ms.totalFavor) + " · food " + Math.round(ms.food) + " · legend " + (ms.legend || 0).toFixed(1));
-console.log("  the race: " + A.signs + " sign" + (A.signs === 1 ? "" : "s") + " bought · gate 8 " + mm(A.tG8) + " · herd " + mm(A.tRb) + " · bank " + mm(A.tBank) + "\n");
+console.log("  the race: " + A.signs + " sign" + (A.signs === 1 ? "" : "s") + " bought · gate 8 " + mm(A.tG8) + " · herd " + mm(A.tRb) + " · bank " + mm(A.tBank));
+console.log("  the skies: " + skyLen.map(t => mm(t)).join(" / ") + " · souls at the end " + A.souls.toExponential(2) + "\n");
 
 let fail = 0;
 const check = (name, cond, detail) => { console.log((cond ? "PASS  " : "FAIL  ") + name + "  (" + detail + ")"); if (!cond) fail++; };
@@ -391,5 +505,13 @@ check("ascension at bot minute 18-22",   tAscend >= 1080 && tAscend <= 1320, mm(
 check("three timers, staggered 30-90s",  tGaps.length === 2 && tGaps.every(g => g >= 30 && g <= 90),
   timers.map(mm).join(" / ") + (tGaps.length === 2 ? " · gaps " + tGaps.map(g => Math.round(g) + "s").join(", ") : " · a clock is missing"));
 check("no flat stretch > 3min after the molt", postGap <= 180 && tAscend !== Infinity, Math.round(postGap) + "s ending " + mm(postAt));
+check("sky 1 under 8 min",  skyLen[0] <= 480, mm(skyLen[0]));
+check("sky 2 under 7 min",  skyLen[1] <= 420, mm(skyLen[1]));
+check("sky 3 under 6 min",  skyLen[2] <= 360, mm(skyLen[2]));
+check("each sky falls faster",            skyLen[0] > skyLen[1] && skyLen[1] > skyLen[2],
+  skyLen.map(t => Math.round(t) + "s").join(" > "));
+check("the full run 34-38 min",           tDark >= 2040 && tDark <= 2280, mm(tDark));
+check("the last star ends it",            A.endState === 1 && A.heralds === 0,
+  "souls frozen at " + A.souls.toExponential(2));
 
 process.exit(fail ? 1 : 0);

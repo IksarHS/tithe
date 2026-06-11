@@ -369,17 +369,24 @@ under the whole act — the field is the log, and the log now reads in lights.
 ### 7.1 the board
 
 - **worlds**: 14 per sky (galaxy), converted serially in star order. World i
-  (0-based) requires `40 × 1.6^i` herald-seconds of `spread`. A world the
+  (0-based) requires `40 × 1.55^i` herald-seconds of `spread` (M8 tune: at
+  1.6 the back half of a sky outlasts the 8-minute contract). A world the
   silence has dimmed costs ×2 (stall, not loss — it can always be relit).
+  Under the third sky the heralds stop one world short: the last star is
+  never converted by tick, only taken by hand (§7.4) — otherwise the
+  spread itself would soft-lock the ending.
 - **souls**: on conversion, `souls += 1e6 × 3^i × 1000^g` (g = sky index
   0–2). Sky totals ≈ 2.4e12 / 2.4e15 / 2.4e18. Display: spelled suffixes
   (extend `fmt` through b, t, qa, qi); with `the count` bought, one decimal.
   OWNER CALL: total ~2.4e18 (alt: DESIGN.md §3's 1e60–80 with five+ skies —
   louder, longer, still plain-JS-safe; default is the quieter scale because
   tithe's numbers law is smallness).
-- **favor flow**: each tithed world pays `0.8 × 1000^g × reap` favor/s
-  (reap = slider right share). Favor cap is gone after ascension — the flock
-  that set it is gone; legend never accrues again.
+- **favor flow**: each tithed world pays `4 × 1000^g × reap` favor/s
+  (reap = slider right share; M8 tune — at 0.8 the act-3 wallet was dead:
+  the pre-ascension cap of 2,600 means the player crosses with one seed,
+  and tongues/the vigil must be reachable from the reap alone). Favor cap
+  is gone after ascension — the flock that set it is gone; legend never
+  accrues again.
 
 ### 7.2 heralds
 
@@ -424,6 +431,12 @@ The rival nothing-god, translated from UP's drifters as a threshold-stall
 |---|---|---|---|---|---|
 | sky2 | another sky | the dark is not empty yet. | 2.0e12 souls | re-roll: 14 stars relight, dimmer; world costs ×1; souls ×1000 | sky 1 at 14/14 |
 | sky3 | another sky | (same row, mutated price) | 2.0e15 souls | as above | sky 2 at 14/14 |
+
+The door is narrow: of a gross of heralds, a dozen cross — `heralds =
+max(1, √heralds)` at each door (M8 tune: at full strength the cap-144
+swarm blitzed skies 2–3 into cutscenes; the thinning gives every sky a
+regrowth arc, and each still falls faster than the last). Tongues crosses;
+the hush expires with its sky.
 | last | the last star | — (no flavor; the name is enough) | all the heralds | consume world 42; every rate reads 0.0 — the first zero that will never move | sky 3 at 13/14 |
 
 The doors are billed in souls — the tithe spends the tithed (Law 12: each

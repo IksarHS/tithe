@@ -1103,16 +1103,16 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   SA.slider = 1;  /* full reap */
   const f1 = SA.favor, t1 = SA.totalFavor, l1 = SA.legend;
   tk(10);
-  ok(near(SA.favor, f1 + 8, 0.05) && near(SA.totalFavor, t1 + 8, 0.05),
-    "one world pays eight favor in ten seconds");
+  ok(near(SA.favor, f1 + 40, 0.05) && near(SA.totalFavor, t1 + 40, 0.05),
+    "one world pays forty favor in ten seconds");
   ok(near(SA.heralds, 1.92, 0.01) && near(SA.worldProg, 29.6, 0.2),
     "at full reap the board holds its breath");
   SA.favor = 5000;  /* far past the old cap */
   tk(10);
-  ok(near(SA.favor, 5008, 0.05), "the cap died with the flock that set it");
+  ok(near(SA.favor, 5040, 0.05), "the cap died with the flock that set it");
   ok(SA.legend === l1, "legend never accrues again");
   ok(dA.getElementById("legendRate").textContent === "", "its rate line stays empty");
-  ok(dA.getElementById("favorRate").textContent === "+0.80/s", "the reap reads on the favor line");
+  ok(dA.getElementById("favorRate").textContent === "+4.0/s", "the reap reads on the favor line");
 
   /* recall: 100% of the seed cost, any time (law 14) */
   SA.favor = 1000;
@@ -1222,12 +1222,12 @@ ok(!!store["tithe-save"], "save written on beforeunload");
 
   /* four worlds in: no silence, no vigil */
   SS.heralds = 1; SS.heraldSeeds = 1; SS.heraldSpent = 400; SS.seen.heraldT = 1;
-  SS.worlds = 4; SS.worldProg = 262; SS.souls = 0;
+  SS.worlds = 4; SS.worldProg = 230; SS.souls = 0;
   ok(!SS.silenceBorn && !dS.getElementById("bld-vigil"),
     "before the fifth world, no one keeps watch");
 
   /* born at the fifth, honest to the digit (§7.3) */
-  tk(1);  /* 262 + 1.02 herald-seconds crosses worldNeed(4) = 262.144 */
+  tk(1);  /* 230 + 1.02 herald-seconds crosses worldNeed(4) = 230.88 */
   ok(SS.worlds === 5 && SS.silenceBorn === true && SS.faint === 1,
     "born at the fifth world, honest to the digit");
   let scS = GS.villageScene();
@@ -1271,7 +1271,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(vigBtn.querySelector(".ct").textContent === "", "no hand on it now");
 
   /* a dimmed world costs double — a stall, never a loss (§7.1) */
-  SS.heralds = 1; SS.worldProg = 838;  /* worldNeed(5) x 2 = 838.86 */
+  SS.heralds = 1; SS.worldProg = 715;  /* worldNeed(5) x 2 = 715.73 */
   tk(1);
   ok(SS.worlds === 6 && SS.faint === 2,
     "a dimmed world costs double — and is relit by being taken");
@@ -1334,6 +1334,168 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(mgS.silenceBorn === false && mgS.faint === 0 && mgS.silenceT === 0 &&
      mgS.dimT === 0 && mgS.v === 7,
     "a v6 save meets the silence at its defaults");
+}
+
+/* ---------- the skies: two doors, then the last star ---------- */
+
+{
+  const stK = {};
+  const wK = boot(stK).window, dK = wK.document, GK = wK.__tithe, SK = GK.state;
+  /* the same dead village, one world short of its first full sky */
+  SK.proj.fire = true; SK.proj.tools = true; SK.proj.rats = true; SK.proj.shrineX = true;
+  SK.proj.temple = true; SK.proj.tithe = true; SK.proj.songs = true; SK.proj.calendar = true;
+  SK.proj.lights = true; SK.proj.ascend = true;
+  SK.mir.goodyear = true; SK.mir.obedience = true; SK.mir.tongues = true; SK.mir.hush = 1;
+  SK.bld.hut = 5; SK.bld.farm = 3; SK.bld.quarry = 1; SK.bld.sawpit = 1; SK.bld.granary = 1;
+  SK.turn1 = true; SK.offerings = 21; SK.nameIdx = 22; SK.deeper = 4;
+  SK.totalFavor = 3000; SK.pop = 2; SK.jobs = { f:0, w:0, m:0, p:0, c:0 };
+  SK.favor = 500; SK.food = 6000; SK.legend = 12; SK.slider = 0; SK.tithedLine = 0;
+  SK.silenceBorn = true; SK.silenceT = 200; SK.faint = 0; SK.dimT = 0;
+  SK.worlds = 13; SK.heralds = 0; SK.heraldSeeds = 0; SK.heraldSpent = 0;
+  SK.seen.heraldT = 1; SK.souls = 0;
+  const tk = s => { SK.last = Date.now() - (s ? s * 1000 : 1); GK.tick(); };
+  tk();            /* reveals fire while two stragglers stand */
+  SK.pop = 0; tk(); /* then the village is empty, as the door left it */
+
+  /* thirteen worlds: the dark has not answered yet */
+  ok(!dK.getElementById("proj-sky") && !dK.getElementById("proj-last"),
+    "no door at thirteen worlds, no end at sky one");
+
+  /* the door appears at a full sky, billed in souls (§7.4) */
+  SK.worlds = 14; SK.souls = 1e12;
+  tk();
+  const skyBtn = dK.getElementById("proj-sky");
+  ok(!!skyBtn && skyBtn.querySelector(".nm").textContent === "another sky" &&
+     skyBtn.querySelector(".co").textContent === "2t souls",
+    "another sky: the tithe spends the tithed");
+  ok(skyBtn.parentElement.querySelector(".tease").textContent === "the dark is not empty yet.",
+    "and says its one line");
+  ok(skyBtn.disabled, "a trillion souls is not two");
+  GK.openSky();
+  ok(SK.galaxy === 0 && SK.souls === 1e12, "the door does not open on credit");
+
+  /* the first door: re-roll — fourteen stars relight, dimmer */
+  SK.souls = 2391484e6;  /* the whole first sky, to the soul */
+  SK.heralds = 144;      /* a full gross at the door */
+  GK.render();
+  skyBtn.click();
+  ok(SK.galaxy === 1 && SK.souls === 391484e6, "two trillion souls buys the second sky");
+  ok(SK.heralds === 12, "the door is narrow — of a gross of heralds, a dozen cross");
+  ok(SK.worlds === 0 && SK.worldProg === 0 && SK.faint === 0 && SK.dimT === 0,
+    "the board re-rolls clean");
+  let scK = GK.villageScene();
+  ok(scK.stars.every(st => st.state === "lit") && scK.sky === 1,
+    "fourteen stars relight — the field knows they are dimmer");
+  ok(dK.getElementById("popLine").textContent === "worlds 0 / 14 · souls 391.5b",
+    "the line reads a fresh sky and the change from the door");
+  ok(GK.hushActive() === false &&
+     dK.getElementById("mir-hush").querySelector(".co").textContent === "2.5m favor",
+    "the hush expired with its sky; the next one costs a thousandfold");
+  ok(dK.getElementById("bld-vigil").querySelector(".co").textContent === "8k favor/s",
+    "the vigil's asking scales with the sky");
+  ok(skyBtn.querySelector(".co").textContent === "2qa souls" && skyBtn.disabled,
+    "the same row, mutated price");
+  ok(skyBtn.parentElement.querySelector(".tease").textContent === "",
+    "the dark answered once; the flavor is spent");
+
+  /* under the second sky every world pays a thousandfold */
+  SK.heralds = 1; SK.worldProg = 20;
+  tk(10);
+  ok(SK.worlds === 1 && SK.souls === 392484e6,
+    "the first world of sky two pays a billion souls");
+
+  /* the second door, then a dead line under the third sky */
+  SK.worlds = 14; SK.souls = 2.4e15; SK.heralds = 0;
+  GK.render();
+  skyBtn.click();
+  ok(SK.galaxy === 2 && SK.souls === 4e14 && SK.worlds === 0,
+    "two quadrillion souls buys the third sky");
+  ok(SK.heralds === 0, "the door makes no heralds of its own");
+  ok(skyBtn.querySelector(".co").textContent === "" && skyBtn.disabled,
+    "under the third sky there is no fourth door");
+  GK.openSky();
+  ok(SK.galaxy === 2 && SK.souls === 4e14, "and no amount of asking opens one");
+  ok(!dK.getElementById("proj-last"), "the last star waits for the rim");
+
+  /* the last star sits revealed at 13/14, priced in the player's children (§7.4) */
+  SK.worlds = 13; SK.souls = 0; SK.heralds = 1; SK.heraldSeeds = 1; SK.heraldSpent = 400;
+  SK.slider = 1;  /* full reap holds the board still */
+  tk();
+  const lastBtn = dK.getElementById("proj-last");
+  ok(!!lastBtn && lastBtn.querySelector(".nm").textContent === "the last star" &&
+     lastBtn.querySelector(".co").textContent === "all the heralds",
+    "the last star states its price: all the heralds");
+  ok(lastBtn.parentElement.querySelector(".tease").textContent === "",
+    "no flavor; the name is enough");
+  ok(!lastBtn.disabled, "one herald is enough to spend everything");
+  SK.worlds = 12;
+  GK.takeLastStar();
+  ok(!SK.proj.last && SK.endState === 0, "twelve worlds is not the rim");
+  SK.worlds = 13;
+
+  /* the rim holds: spread on full, the heralds stop one short (§7.4) */
+  SK.slider = 0; SK.worldProg = 1e9;
+  tk(100);
+  ok(SK.worlds === 13 && !SK.proj.last && SK.souls === 0,
+    "a hundred seconds of full spread and the heralds take nothing");
+  SK.worldProg = 0; SK.slider = 1;
+
+  /* the end: the heralds go in and do not come back */
+  GK.render();
+  lastBtn.click();
+  ok(SK.proj.last === true && SK.endState === 1, "the last star is taken");
+  ok(SK.souls === 1594323e12 && SK.worlds === 14,
+    "world forty-two pays out and the sky is full forever");
+  ok(SK.heralds === 0 && SK.heraldSeeds === 0 && SK.heraldSpent === 0,
+    "the heralds, all of them, do not come back");
+  ok(lastBtn.querySelector(".co").textContent === "dark" && lastBtn.disabled,
+    "the row reads dark");
+  ok(dK.getElementById("popLine").textContent === "worlds 14 / 14 · souls 1.6qi",
+    "the final total, spelled in quintillions");
+  ok(dK.getElementById("favorRate").textContent === "0.0/s" &&
+     dK.getElementById("soulsRate").textContent === "0.0/s",
+    "every rate reads the first zero that will never move");
+  const herK = dK.getElementById("bld-herald");
+  ok(herK.querySelector(".co").textContent === "" && herK.disabled,
+    "the herald ladder ends with the heralds");
+  GK.buyHerald();
+  ok(SK.heralds === 0, "no seed takes after the last star");
+  scK = GK.villageScene();
+  ok(scK.stars.every(st => st.state === "red") && scK.sky === 2,
+    "all fourteen stars keep the only red the game owns");
+
+  /* frozen: a hundred seconds move nothing */
+  SK.favor = 1234;
+  const slT = SK.silenceT;
+  tk(100);
+  ok(SK.favor === 1234 && SK.souls === 1594323e12 && SK.heralds === 0,
+    "a hundred seconds move nothing");
+  ok(SK.silenceT === slT && SK.faint === 0 && SK.dimT === 0,
+    "nothing dims — there is nothing left to take");
+
+  /* the end survives a reload */
+  wK.dispatchEvent(new wK.Event("beforeunload"));
+  const wK2 = boot(stK).window, dK2 = wK2.document, GK2 = wK2.__tithe;
+  ok(GK2.state.endState === 1 && GK2.state.proj.last === true &&
+     GK2.state.galaxy === 2 && GK2.state.souls === 1594323e12,
+    "reload: the end is remembered");
+  ok(dK2.getElementById("favorRate").textContent === "0.0/s" &&
+     dK2.getElementById("soulsRate").textContent === "0.0/s",
+    "reload: the zeroes hold");
+  ok(dK2.getElementById("proj-last").querySelector(".co").textContent === "dark" &&
+     dK2.getElementById("proj-sky").querySelector(".co").textContent === "",
+    "reload: dark stays dark");
+  ok(dK2.getElementById("popLine").textContent === "worlds 14 / 14 · souls 1.6qi",
+    "reload: the ledger never moves again");
+
+  /* old saves keep their skies */
+  const mgK = GK2.migrate({ v:6, turn1:true, galaxy:2, endState:1,
+    proj:{ ascend:true, last:true } });
+  ok(mgK.galaxy === 2 && mgK.endState === 1 && mgK.proj.last === true && mgK.v === 7,
+    "a v6 save keeps its skies and its ending");
+  const mgK5 = GK2.migrate({ v:5, turn1:true });
+  ok(mgK5.galaxy === 0 && mgK5.endState === 0,
+    "a v5 save starts under its first sky");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */
