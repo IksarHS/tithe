@@ -60,6 +60,8 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
   width:2.75rem; min-width:2.75rem; height:2.75rem; min-height:2.75rem;
   padding:0; margin:0; text-align:center; flex:none;
 }
+#sliderRow input{flex:1; height:2.75rem; margin:0; background:none; accent-color:var(--dim)}
+.send{color:var(--dim)}
 #popLine{color:var(--dim); margin:.1rem 0 .4rem; min-height:1.2em}
 #surgeLine{color:var(--dim); min-height:1.2em; max-width:21rem}
 #faithLine{color:var(--dim); min-height:1.2em; max-width:21rem}
@@ -108,6 +110,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
       <div class="job ghost" id="job-m"><span class="jname">mason</span><span class="jn" id="jn-m">0</span><button class="jb" id="jm-m" aria-label="fewer masons">−</button><button class="jb" id="jp-m" aria-label="more masons">+</button></div>
       <div class="job ghost" id="job-p"><span class="jname">priest</span><span class="jn" id="jn-p">0</span><button class="jb" id="jm-p" aria-label="fewer priests">−</button><button class="jb" id="jp-p" aria-label="more priests">+</button></div>
       <div class="job ghost" id="job-c"><span class="jname">cultivator</span><span class="jn" id="jn-c">0</span><button class="jb" id="jm-c" aria-label="fewer cultivators">−</button><button class="jb" id="jp-c" aria-label="more cultivators">+</button></div>
+      <div class="job ghost" id="sliderRow"><span class="send">fields</span><input type="range" id="slider" min="0" max="100" value="50" aria-label="fields to shrine"><span class="send">shrine</span></div>
     </section>
     <section id="sec-bld" class="hidden">
       <h2 id="h-bld">works</h2>
@@ -118,6 +121,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
   <div class="col" id="c3">
     <section id="sec-proj" class="hidden">
       <h2 id="h-proj">undertakings</h2>
+      <div class="tease hidden" id="earlyWorks">the early works — done</div>
       <div id="projList"></div>
     </section>
     <section id="sec-shrine" class="hidden">
@@ -144,7 +148,7 @@ const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"to
 
 const ACTS = [
   { id:"berries", cur:"food",            el:"act-berries" },
-  { id:"wood",    cur:"wood", show:s=>s.totalFood>=3, el:"act-wood" },
+  { id:"wood",    cur:"wood", show:s=>s.totalFood>=3, die:s=>!!s.proj.tithe, el:"act-wood" },
 ];
 
 const JOBS = [
@@ -165,12 +169,12 @@ const BLD = [
 ];
 
 const PROJ = [
-  { id:"fire",    name:"a fire",             flavor:"the cold backs off a step.",  cost:{wood:10},           done:"lit",  show:s=>s.totalWood>=6 },
-  { id:"tools",   name:"stone tools",        flavor:"flint edges.",                cost:{wood:30,stone:10},  done:"made", show:s=>s.totalStone>=3, eff:{allJobs:1.5} },
-  { id:"rats",    name:"rats in the stores", flavor:s=>nameAt(s.ratsIdx)+" sits up with a stick.", cost:{wood:60}, done:"kept", show:s=>s.totalFood>=120 },
-  { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:90,wood:60}, done:"open", show:s=>s.totalStone>=70 },
+  { id:"fire",    name:"a fire",             flavor:"the cold backs off a step.",  cost:{wood:10},           done:"lit",  show:s=>s.totalWood>=6, act:1 },
+  { id:"tools",   name:"stone tools",        flavor:"flint edges.",                cost:{wood:30,stone:10},  done:"made", show:s=>s.totalStone>=3, eff:{allJobs:1.5}, act:1 },
+  { id:"rats",    name:"rats in the stores", flavor:s=>nameAt(s.ratsIdx)+" sits up with a stick.", cost:{wood:60}, done:"kept", show:s=>s.totalFood>=120, act:1 },
+  { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:90,wood:60}, done:"open", show:s=>s.totalStone>=70, act:1 },
   { id:"temple",  name:"the temple",         flavor:"the hollow learns its name.", cost:{stone:120,wood:80,favor:150}, done:"raised", eff:{out:"favor",x:2}, show:s=>faithOf(s)>=4 },
-  { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:null, show:s=>s.mir.obedience },
+  { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:{favor:250,food:60,wood:80,stone:30}, done:"standing", show:s=>s.mir.obedience },
 ];
 
 const MIR = [
@@ -230,7 +234,7 @@ const ANCHORS = {
 };
 const SITES = {  /* where each job walks to */
   f:{col:29,row:10.8}, w:{col:13,row:10}, m:{col:77,row:8.8},
-  p:{col:84.5,row:7.4}, c:{col:27,row:10.6}, i:{col:49.5,row:10.2},
+  p:{col:84.5,row:7.4}, c:{col:27,row:10.6}, g:{col:83.2,row:8.2}, i:{col:49.5,row:10.2},
 };
 
 /* ============================== state ============================== */
@@ -339,7 +343,8 @@ const jobRate = (j, surge) => {
   const sm = surge === undefined ? surgeMult() : (surge ? SURGE.x : 1);
   return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * projOutMult(def.out) * sm;
 };
-const prodOf = (cur, surge) => JOBS.reduce((t,jd)=> t + (jd.out===cur ? jobRate(jd.id, surge) : 0), 0);
+const prodOf = (cur, surge) => JOBS.reduce((t,jd)=> t + (jd.out===cur ? jobRate(jd.id, surge) : 0), 0)
+  + (cur === "favor" ? congRate() : 0);
 const upkeep = () => (S.pop + S.jobs.p * ((JOBS.find(j=>j.id==="p").eats||1) - 1)) * UPKEEP;
 const ratsDrain = () => (S.seen["pp:rats"] && !S.proj.rats) ? RATS_DRAIN : 0;
 const rateOf = cur => prodOf(cur) - (cur==="food" ? upkeep() + ratsDrain() : 0);
@@ -373,6 +378,32 @@ function grantFavor(y) {
   return y;
 }
 const jobCapOf = j => j === "p" ? faithOf() : Infinity;
+
+/* molt 2: one slider decides, the rows report. fields hands feed first;
+   whoever the larder spares tends the cradles; the shrine takes the rest,
+   priests to the faith cap, the remainder a congregation at half a voice */
+function deriveJobs() {
+  const stock = S.pop;
+  const u = Math.max(0, Math.min(1, S.slider));
+  const fields = Math.round((1 - u) * stock);
+  const shrine = stock - fields;
+  const p = Math.min(shrine, faithOf());
+  const fd = JOBS.find(j => j.id === "f");
+  const per = fd.base * bldJobMult("f") * projAllJobs() * mirMult("food") * projOutMult("food");
+  const need = per > 0 ? Math.ceil((stock + p) * UPKEEP / per) : fields;
+  const f = Math.min(fields, need);
+  return { f, w:0, m:0, p, c:fields - f, cong:shrine - p };
+}
+function applyTithe() {
+  if (!S.proj.tithe) return;
+  const d = deriveJobs();
+  S.jobs.f = d.f; S.jobs.w = d.w; S.jobs.m = d.m; S.jobs.p = d.p; S.jobs.c = d.c;
+}
+function congRate() {
+  if (!S.proj.tithe) return 0;
+  const pd = JOBS.find(j => j.id === "p");
+  return deriveJobs().cong * pd.base * 0.5 * bldJobMult("p") * mirMult("favor") * projOutMult("favor");
+}
 
 const bldCost = b => {
   const c = {};
@@ -432,7 +463,7 @@ function assignFigures() {
   const order = ["f","w","m","p","c"];
   for (const j of order) for (let i = 0; i < S.jobs[j]; i++) list.push(j);
   const idl = idle();
-  for (let i = 0; i < idl; i++) list.push("i");
+  for (let i = 0; i < idl; i++) list.push(S.proj.tithe ? "g" : "i");  /* after the molt no one is idle: the rest kneel */
   return list.slice(0, FIG_MAX);
 }
 
@@ -653,7 +684,7 @@ const els = {};
 ["sec-stores","sec-village","sec-bld","sec-proj","sec-shrine","sec-mir",
  "h-act","h-village","h-shrine","popLine","offer","shrineTease","surgeLine",
  "foodVal","foodRate","woodVal","woodRate","stoneVal","stoneRate","favorVal","favorRate",
- "legendVal","legendRate","faithLine",
+ "legendVal","legendRate","faithLine","sliderRow","slider","earlyWorks",
  "row-food","row-wood","row-stone","row-favor","row-legend","bldList","projList","mirList",
  "act-berries","act-wood"].forEach(id => els[id] = $(id));
 JOBS.forEach(j => { els["job-"+j.id]=$("job-"+j.id); els["jn-"+j.id]=$("jn-"+j.id);
@@ -672,7 +703,7 @@ function makeRow(def, kind) {
   const tease = document.createElement("div"); tease.className = "tease";
   tease.textContent = typeof def.flavor === "function" ? def.flavor(S) : (def.flavor || "");
   wrap.appendChild(btn); wrap.appendChild(tease);
-  rowNodes[kind + "-" + def.id] = { btn, nm, ct, co, tease, def, kind };
+  rowNodes[kind + "-" + def.id] = { wrap, btn, nm, ct, co, tease, def, kind };
   btn.addEventListener("click", () => {
     if (kind === "bld") buyBld(def);
     else if (kind === "proj") buyProj(def);
@@ -693,6 +724,7 @@ function fixJobs() {
 }
 
 function buyBld(def) {
+  if (S.proj.tithe) return;  /* molt 2: nothing more is built by hand */
   if (def.max && S.bld[def.id] >= def.max) return;
   const c = bldCost(def);
   if (!canAfford(c)) return;
@@ -701,7 +733,10 @@ function buyBld(def) {
 }
 function buyProj(def) {
   if (S.proj[def.id] || !def.cost || !canAfford(def.cost)) return;
+  /* the tithe was wood and stone's last bill: the old ledgers never open again */
+  if (S.proj.tithe && (def.cost.wood || def.cost.stone)) return;
   pay(def.cost); S.proj[def.id] = true;
+  applyTithe();  /* the molt frame: the slider takes the rows on the same render */
   render(); save();
 }
 function buyMir(def) {
@@ -711,6 +746,18 @@ function buyMir(def) {
 }
 
 function doOffering() {
+  if (S.proj.tithe) {
+    /* the button's second life: rungs of 1, 2, 4, 8 — each one point of faith, taken from a full village */
+    if (S.deeper >= 4 || S.pop < cap()) return;
+    const n = Math.pow(2, S.deeper);
+    S.pop -= n;
+    S.deeper++;
+    S.offerings += n;   /* the picture remembers each of them */
+    S.nameIdx += n;     /* the names are kept, never shown — the order matters later */
+    S.arriveCd = Math.max(S.arriveCd, arriveCdS());
+    applyTithe(); render(); save();
+    return;
+  }
   /* after the first, the shrine takes only from a full village */
   if (S.pop < 1 || (S.offerings > 0 && S.pop < cap())) return;
   S.pop--; fixJobs();
@@ -726,6 +773,7 @@ function doOffering() {
 }
 
 function doAct(a) {
+  if (a.die && a.die(S)) return;  /* the verb is dead */
   S[a.cur] += clickPower();
   S[TOT[a.cur]] += clickPower();
   S.clicks++;
@@ -753,7 +801,12 @@ function checkReveals() {
   if (S.turn1) see("row-favor", els["row-favor"]);
   if (S.legend > 0) see("row-legend", els["row-legend"], true);
   if (S.turn1) see("faith", els["faithLine"], true);
-  for (const a of ACTS) if (a.show && (S.seen["a:"+a.id] || a.show(S))) see("a:"+a.id, els[a.el], true);
+  for (const a of ACTS) {
+    if (a.die && a.die(S)) { els[a.el].classList.add("ghost"); continue; }  /* molt 2: the verb dies, the slot holds */
+    if (a.show && (S.seen["a:"+a.id] || a.show(S))) see("a:"+a.id, els[a.el], true);
+  }
+  if (S.proj.tithe) see("slider", els["sliderRow"], true);
+  if (S.proj.tithe) see("earlyWorks", els["earlyWorks"]);
   if (S.pop > 0 || S.bld.hut > 0) see("village", els["sec-village"]);
   for (const j of JOBS) if (S.seen["j:"+j.id] || j.show(S)) see("j:"+j.id, els["job-"+j.id], true);
 
@@ -814,12 +867,15 @@ function render() {
   checkReveals();
 
   setText(els["foodVal"], fmtStore(S.food));
-  setText(els["woodVal"], fmtStore(S.wood));
-  setText(els["stoneVal"], fmtStore(S.stone));
+  setText(els["woodVal"], S.proj.tithe ? "" : fmtStore(S.wood));
+  setText(els["stoneVal"], S.proj.tithe ? "" : fmtStore(S.stone));
   setText(els["favorVal"], fmtStore(S.favor));
   setText(els["foodRate"], (S.pop > 0 || prodOf("food") > 0) ? fmtRate(rateOf("food")) : "");
-  setText(els["woodRate"], prodOf("wood") > 0 ? fmtRate(rateOf("wood")) : "");
-  setText(els["stoneRate"], prodOf("stone") > 0 ? fmtRate(rateOf("stone")) : "");
+  setText(els["woodRate"], !S.proj.tithe && prodOf("wood") > 0 ? fmtRate(rateOf("wood")) : "");
+  setText(els["stoneRate"], !S.proj.tithe && prodOf("stone") > 0 ? fmtRate(rateOf("stone")) : "");
+  /* molt 2: wood and stone leave the ledger; the slots keep their shape */
+  els["row-wood"].classList.toggle("ghost", !!S.proj.tithe);
+  els["row-stone"].classList.toggle("ghost", !!S.proj.tithe);
   setText(els["favorRate"], prodOf("favor") > 0 && S.favor < favorCap() ? fmtRate(rateOf("favor")) : "");
   setText(els["legendVal"], fmtStore(S.legend));
   setText(els["legendRate"], S.turn1 && S.favor >= favorCap() ? fmtRate(LEGEND_RATE) : "");
@@ -830,15 +886,20 @@ function render() {
   setText(els["act-wood"], lex("act-wood"));
   setText(els["h-village"], lex("h-village"));
   setText(els["h-shrine"], lex("h-shrine"));
-  let pl = lex("popWord") + " " + S.pop + " / " + cap() + " · idle " + idle();
+  let pl = lex("popWord") + " " + S.pop + " / " + cap() +
+    (S.proj.tithe ? " · congregation " + deriveJobs().cong : " · idle " + idle());
   if (S.proj.fire && S.pop < cap() && S.food < arriveAt())
     pl += " · next at " + fmt(arriveAt()) + " food";
   setText(els["popLine"], pl);
 
   for (const j of JOBS) {
     setText(els["jn-"+j.id], String(S.jobs[j.id]));
-    els["jp-"+j.id].disabled = idle() < 1 || S.jobs[j.id] >= jobCapOf(j.id);
-    els["jm-"+j.id].disabled = S.jobs[j.id] < 1;
+    els["jp-"+j.id].disabled = !!S.proj.tithe || idle() < 1 || S.jobs[j.id] >= jobCapOf(j.id);
+    els["jm-"+j.id].disabled = !!S.proj.tithe || S.jobs[j.id] < 1;
+  }
+  if (S.proj.tithe) {
+    const v = String(Math.round(S.slider * 100));
+    if (els["slider"].value !== v) els["slider"].value = v;
   }
 
   for (const key of Object.keys(rowNodes)) {
@@ -847,30 +908,44 @@ function render() {
       const atMax = def.max && S.bld[def.id] >= def.max;
       const c = bldCost(def);
       setText(r.ct, S.bld[def.id] > 0 ? String(S.bld[def.id]) : "");
-      setText(r.co, atMax ? "" : costText(c));
-      r.btn.disabled = atMax || !canAfford(c);
+      /* molt 2 freezes the works: counts remain, costs vanish */
+      setText(r.co, (atMax || S.proj.tithe) ? "" : costText(c));
+      r.btn.disabled = atMax || !!S.proj.tithe || !canAfford(c);
       if (S.bld[def.id] > 0) setText(r.tease, effLine(def));
     } else {
       const done = r.kind === "proj" ? S.proj[def.id] : S.mir[def.id];
+      /* wood and stone died at molt 2: anything still priced in them is stranded */
+      const dead = r.kind === "proj" && S.proj.tithe && !done && def.cost && !!(def.cost.wood || def.cost.stone);
       setText(r.ct, "");
       setText(r.co, done ? (def.done || "done") : costText(def.cost));
-      r.btn.disabled = done || !def.cost || !canAfford(def.cost);
+      r.btn.disabled = done || !def.cost || dead || !canAfford(def.cost);
       if (done) setText(r.tease, effLine(def));
+      /* the early works fold into one line */
+      if (r.kind === "proj" && def.act === 1) r.wrap.classList.toggle("hidden", !!S.proj.tithe);
     }
   }
 
   if (S.seen["shrine"]) {
-    setText(els["offer"], "an offering — " + nextName());
-    /* after the first, the shrine takes only from a full village */
-    els["offer"].disabled = S.pop < 1 || (S.offerings > 0 && S.pop < cap());
-    /* the sentence lives exactly as long as the gift */
-    setText(els["shrineTease"],
-      S.turn1 ? (S.offerings === 1 && S.surgeLeft > 0 ? "they were never your hands." : "") : "it was waiting.");
-    /* the deal is on the table before the first click; afterwards, the clock runs */
-    const left = Math.ceil(S.surgeLeft);
-    const terms = "yield ×" + SURGE.x + " · ";
-    setText(els["surgeLine"], left > 0 ? terms + left + "s"
-      : (S.turn1 ? "next · " + fmt(offerYield()) + " favor" : terms + SURGE.s + "s"));
+    if (S.proj.tithe) {
+      /* the button transmutes in place: a number where the name was */
+      setText(els["offer"], "a deeper offering — " + Math.pow(2, Math.min(S.deeper, 3)));
+      els["offer"].disabled = S.deeper >= 4 || S.pop < cap();
+      setText(els["shrineTease"], "");
+      setText(els["surgeLine"], "");
+      els["surgeLine"].classList.add("hidden");  /* the surge line retires; faith takes its slot */
+    } else {
+      setText(els["offer"], "an offering — " + nextName());
+      /* after the first, the shrine takes only from a full village */
+      els["offer"].disabled = S.pop < 1 || (S.offerings > 0 && S.pop < cap());
+      /* the sentence lives exactly as long as the gift */
+      setText(els["shrineTease"],
+        S.turn1 ? (S.offerings === 1 && S.surgeLeft > 0 ? "they were never your hands." : "") : "it was waiting.");
+      /* the deal is on the table before the first click; afterwards, the clock runs */
+      const left = Math.ceil(S.surgeLeft);
+      const terms = "yield ×" + SURGE.x + " · ";
+      setText(els["surgeLine"], left > 0 ? terms + left + "s"
+        : (S.turn1 ? "next · " + fmt(offerYield()) + " favor" : terms + SURGE.s + "s"));
+    }
   }
 
   if (S.offerings !== lastSpread) {
@@ -890,6 +965,7 @@ function tick() {
   S.last = now;
   if (dt <= 0) return;
   if (dt > capS()) dt = capS();
+  applyTithe();  /* after the molt the slider holds the rows, every tick */
 
   if (motionOK()) {
     S.walkPhase += dt * (surgeMult() > 1 ? 2.2 : 1);
@@ -955,9 +1031,15 @@ els["act-wood"].addEventListener("click", () => doAct(ACTS[1]));
 els["offer"].addEventListener("click", doOffering);
 for (const j of JOBS) {
   els["jp-"+j.id].addEventListener("click", () => {
+    if (S.proj.tithe) return;  /* readouts now */
     if (idle() > 0 && S.jobs[j.id] < jobCapOf(j.id)) { S.jobs[j.id]++; render(); } });
-  els["jm-"+j.id].addEventListener("click", () => { if (S.jobs[j.id] > 0) { S.jobs[j.id]--; render(); } });
+  els["jm-"+j.id].addEventListener("click", () => {
+    if (!S.proj.tithe && S.jobs[j.id] > 0) { S.jobs[j.id]--; render(); } });
 }
+els["slider"].addEventListener("input", () => {
+  S.slider = Math.max(0, Math.min(1, Number(els["slider"].value) / 100));
+  applyTithe(); render();
+});
 $("mSave").addEventListener("click", e => { e.preventDefault(); save(); });
 $("mExport").addEventListener("click", e => { e.preventDefault(); doExport(); });
 $("mImport").addEventListener("click", e => { e.preventDefault(); doImport(); });
@@ -981,7 +1063,7 @@ window.__tithe = {
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE,
   buyBld, buyProj, buyMir, doOffering, fixJobs,
-  faithOf, favorCap, grantFavor, jobCapOf,
+  faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
   bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, jobArrive, arriveCdS, projOutMult, effLine,
   smokeRate, glowT, redT, nextName, nameAt,

@@ -143,7 +143,7 @@ displayed in the shrine section as `faith 1` — one of them believed first.
 ### molt 2 — the tithe (mid act 2)
 
 Trigger: buying `the tithe` — the last bill the old economy ever pays,
-audited in four currencies at once (Law 12): 250 favor + 60 food + 40 wood +
+audited in four currencies at once (Law 12): 250 favor + 60 food + 80 wood +
 30 stone. On the same render:
 
 - **stores (c1):** wood and stone rows blank — value and rate text empty, the
@@ -300,7 +300,7 @@ constraint, the songs make the favor cap the constraint.
 | id | name | flavor (one-time) | cost | effect | show |
 |---|---|---|---|---|---|
 | temple | the temple | the hollow learns its name. | 120 stone + 80 wood + 150 favor | worship ×2; shrine sprite grows in place (same anchor) | faith ≥ 4 |
-| tithe | the tithe (shipped row; cost lands) | the flock could give without being asked. | 250 favor + 60 food + 40 wood + 30 stone | molt 2 (§4) | `s.mir.obedience` (shipped) |
+| tithe | the tithe (shipped row; cost lands) | the flock could give without being asked. | 250 favor + 60 food + 80 wood + 30 stone | molt 2 (§4) | `s.mir.obedience` (shipped) |
 | songs | the songs | they sing what they cannot say. | 20 legend | worship ×1.5 | legend > 0 |
 | calendar | a calendar | the days get names. | 45 legend | arrival threshold ×0.8 | `s.proj.songs` |
 | count | the count | every head, every hand. | 90 legend | souls and favor readouts gain a decimal place (precision as dread) | `s.proj.calendar` |

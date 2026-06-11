@@ -14,6 +14,7 @@
  *   the tithe teased < 12 bot-min total (the second-session hook lands in one)
  *   faith 4 by bot minute 9 (the spine climbs while the bot answers)
  *   the temple < 14 bot-min (act 2's first big sink lands the same evening)
+ *   molt 2 (the tithe) at bot minute 10-13 (the last bill the old economy pays)
  *   the hunger wall: after excavation, WITHOUT the offering nothing new
  *   ever unlocks — the sim measures how flat that road is.
  */
@@ -51,6 +52,7 @@ const PROJ = {
   rats:    { cost: { wood: 60 } },
   shrineX: { cost: { stone: 90, wood: 60 }, showStone: 70 },
   temple:  { cost: { stone: 120, wood: 80, favor: 150 } },  /* worship x2; needs faith 4 */
+  tithe:   { cost: { favor: 250, food: 60, wood: 80, stone: 30 } },  /* molt 2 — the axe comes back out for the last bill */
 };
 const MIR = {
   goodyear:  { cost: 60 },   /* arrivals at half the food (arriveAt x0.5) */
@@ -165,9 +167,12 @@ function step(s, allowOffer) {
         mark(s, "miracle: obedience — the tithe teased"); return;
       } else if (s.mir.obedience && !s.proj.temple && faithOf(s) >= 4 && afford(s, PROJ.temple.cost)) {
         pay(s, PROJ.temple.cost); s.proj.temple = true; mark(s, "temple"); return;
+      } else if (s.proj.temple && !s.proj.tithe && afford(s, PROJ.tithe.cost)) {
+        pay(s, PROJ.tithe.cost); s.proj.tithe = true; mark(s, "the tithe — molt 2"); return;
       } else if (s.pop >= cap(s) && s.pop > 1) { doOffer(s); return; }
-      /* the temple wants wood again — the axe comes back out of the shed */
-      click = (s.mir.obedience && !s.proj.temple && s.wood < PROJ.temple.cost.wood) ? "wood" : "food";
+      /* the temple wants wood again — the axe comes back out of the shed; the tithe asks once more */
+      click = (s.mir.obedience && !s.proj.temple && s.wood < PROJ.temple.cost.wood) ? "wood"
+            : (s.proj.temple && !s.proj.tithe && s.wood < PROJ.tithe.cost.wood) ? "wood" : "food";
     }
   }
 
@@ -217,7 +222,7 @@ function step(s, allowOffer) {
 
 /* ---------- run A: the bot that answers ---------- */
 const A = freshSim();
-while (!A.proj.temple && A.t < 1800) step(A, true);
+while (!A.proj.tithe && A.t < 1800) step(A, true);
 
 const at = label => { const e = A.events.find(e => e.label === label || e.label.startsWith(label)); return e ? e.t : Infinity; };
 const tVillager = at("villager 1");
@@ -228,6 +233,7 @@ const tMiracle  = at("miracle: a good year");
 const tTease    = at("miracle: obedience");
 const tFaith4   = at("faith 4");
 const tTemple   = at("temple");
+const tTithe    = at("the tithe — molt 2");
 
 /* gaps between events up to the excavation */
 const pre = A.events.filter(e => e.t <= tHollow);
@@ -260,6 +266,7 @@ check("first miracle 1-4min after turn", tMiracle - tOffer >= 60 && tMiracle - t
 check("the tithe teased < 12min total",  tTease < 720,    mm(tTease));
 check("faith 4 by bot minute 9",         tFaith4 < 540,   mm(tFaith4));
 check("the temple < 14min bot",          tTemple < 840,   mm(tTemple));
+check("molt 2 at bot minute 10-13",      tTithe >= 600 && tTithe <= 780, mm(tTithe));
 check("the wall is the only flat road",  refusedNews.length === 0, refusedNews.map(e => e.label).join(", ") || "nothing new without the offering");
 
 process.exit(fail ? 1 : 0);

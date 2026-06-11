@@ -249,7 +249,8 @@ S().favor = 150; ff(0.001); obBtn.click();
 ok(S().mir.obedience === true && near(G.jobRate("p"), 0.2 * 2), "worship doubled");
 const titheBtn = d.getElementById("proj-tithe");
 ok(!!titheBtn && titheBtn.disabled, "the tithe is teased, out of reach");
-ok(titheBtn.querySelector(".co").textContent === "soon", "the tithe says only: soon");
+ok(titheBtn.querySelector(".co").textContent === "250 favor + 60 food + 80 wood + 30 stone",
+  "the tithe names its bill — four currencies at once");
 
 /* ---------- the second offering ---------- */
 
@@ -626,6 +627,134 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(near(GQ.arriveAt(), 15 * Math.pow(1.3, 4) * 0.5 * 0.5, 0.05),
     "the bar halves on top of the year — the bottleneck moves to food");
   ok(GQ.arriveCdS() === 10, "and the road shortens to ten");
+}
+
+/* ---------- molt 2: the tithe — the last bill the old economy ever pays ---------- */
+
+{
+  const stD = {};
+  const wD = boot(stD).window, dD = wD.document, GD = wD.__tithe, SD = GD.state;
+  const tk = () => { SD.last = Date.now() - 1; GD.tick(); };
+  /* a village on the eve: act 1 done, the temple raised, the bill affordable */
+  SD.proj.fire = true; SD.proj.tools = true; SD.proj.rats = true; SD.proj.shrineX = true;
+  SD.proj.temple = true;
+  SD.mir.goodyear = true; SD.mir.obedience = true;
+  SD.bld.hut = 4; SD.bld.farm = 3; SD.bld.quarry = 1; SD.bld.sawpit = 1; SD.bld.granary = 1;
+  SD.pop = 8; SD.jobs = { f:3, w:1, m:1, p:2, c:1 };
+  SD.turn1 = true; SD.offerings = 7; SD.nameIdx = 8; SD.totalFavor = 405;
+  SD.totalFood = 130; SD.totalWood = 100; SD.totalStone = 100;
+  SD.favor = 250; SD.food = 200; SD.wood = 80; SD.stone = 30;
+  tk();
+  const billBtn = dD.getElementById("proj-tithe");
+  ok(!!billBtn && !billBtn.disabled, "the bill can be paid");
+  ok(dD.getElementById("sliderRow").classList.contains("ghost"), "the slider waits unseen");
+  ok(dD.getElementById("earlyWorks").classList.contains("hidden"), "the summary line waits unseen");
+  ok(!dD.getElementById("jm-f").disabled, "the hands are still yours");
+  ok(dD.getElementById("bld-hut").querySelector(".co").textContent === "35 wood",
+    "a fifth hut still has a price");
+
+  billBtn.click();
+  /* one render, the whole molt */
+  ok(SD.proj.tithe === true && near(SD.favor, 0, 0.01) && near(SD.food, 140, 0.01)
+    && near(SD.wood, 0, 0.01) && near(SD.stone, 0, 0.01),
+    "audited in four currencies at once");
+  ok(billBtn.querySelector(".co").textContent === "standing", "the row reads standing");
+  ok(dD.getElementById("row-wood").classList.contains("ghost")
+    && dD.getElementById("row-stone").classList.contains("ghost"),
+    "wood and stone leave the ledger; the slots keep their shape");
+  ok(dD.getElementById("woodVal").textContent === "" && dD.getElementById("stoneRate").textContent === "",
+    "never mentioned again");
+  ok(["f","w","m","p","c"].every(j =>
+    dD.getElementById("jp-"+j).disabled && dD.getElementById("jm-"+j).disabled),
+    "every plus and minus dies on the same frame");
+  ok(!dD.getElementById("sliderRow").classList.contains("ghost"), "the slider steps out of its ghost");
+  ok(!dD.getElementById("earlyWorks").classList.contains("hidden"), "the early works fold into one line");
+  ok(["fire","tools","rats","shrineX"].every(id =>
+    dD.getElementById("proj-"+id).parentElement.classList.contains("hidden")),
+    "the act-1 rows are folded away");
+  ok(!dD.getElementById("proj-temple").parentElement.classList.contains("hidden"),
+    "the temple stays on the books");
+  ok(dD.getElementById("bld-hut").querySelector(".co").textContent === ""
+    && dD.getElementById("bld-hut").disabled,
+    "the works freeze: counts remain, costs vanish");
+  ok(dD.getElementById("offer").textContent === "a deeper offering — 1",
+    "the button transmutes in place: a number where the name was");
+  ok(dD.getElementById("surgeLine").classList.contains("hidden"), "the surge line retires");
+  ok(dD.getElementById("act-wood").classList.contains("ghost"), "the wood verb dies with its row");
+  {
+    const wood0 = SD.wood;
+    dD.getElementById("act-wood").click();
+    ok(SD.wood === wood0, "and clicking it grants nothing");
+  }
+
+  /* the rows are readouts now: one slider decides */
+  ok(SD.jobs.f === 3 && SD.jobs.w === 0 && SD.jobs.m === 0 && SD.jobs.p === 4 && SD.jobs.c === 1,
+    "the slider takes the rows: feed first, tend the rest, the shrine keeps four");
+  ok(dD.getElementById("jn-f").textContent === "3", "the readout reports what the slider decides");
+  ok(dD.getElementById("popLine").textContent.indexOf("congregation") >= 0,
+    "the flock line counts the congregation");
+  ok(GD.buyBld(GD.BLD.find(b => b.id === "hut")) === undefined && SD.bld.hut === 4,
+    "nothing more is built by hand");
+
+  /* lean toward the shrine: priests to the faith cap, the rest at half a voice */
+  dD.getElementById("slider").value = "88";
+  dD.getElementById("slider").dispatchEvent(new wD.Event("input"));
+  ok(near(SD.slider, 0.88, 0.001) && SD.jobs.f === 1 && SD.jobs.p === 6 && SD.jobs.c === 0,
+    "the slider leans and the rows follow");
+  ok(near(GD.congRate(), 1 * 0.2 * 0.5 * 2 * 2, 0.001), "one kneels outside the priesthood, at half a voice");
+  ok(near(GD.prodOf("favor"), 6 * 0.2 * 2 * 2 + 0.4, 0.001), "the tithe flows on its own");
+  ok(GD.villageScene().figures.some(f => f.job === "g"), "the congregation walks to the shrine");
+
+  /* the ladder: rungs of 1, 2, 4, 8 — each one point of faith */
+  const offerD = dD.getElementById("offer");
+  offerD.click();
+  ok(SD.pop === 7 && SD.deeper === 1 && SD.offerings === 8, "the first rung takes one");
+  ok(GD.faithOf() === 7, "and faith climbs by one");
+  ok(SD.arriveCd >= 19, "the gap must still be seen");
+  tk();
+  ok(offerD.textContent === "a deeper offering — 2" && offerD.disabled,
+    "the next rung doubles, and waits on a full village");
+  SD.pop = 8; SD.arriveCd = 0; tk();
+  ok(!offerD.disabled, "the herd rebuilt, the rung opens");
+  offerD.click();
+  ok(SD.pop === 6 && SD.deeper === 2 && GD.faithOf() === 8, "the second rung takes two");
+  SD.pop = 8; SD.arriveCd = 0; tk(); offerD.click();
+  ok(SD.pop === 4 && SD.deeper === 3 && GD.faithOf() === 9, "the third rung takes four");
+  SD.pop = 8; SD.arriveCd = 0; tk(); offerD.click();
+  ok(SD.pop === 0 && SD.deeper === 4 && GD.faithOf() === 10, "the eighth-rung guts the village");
+  ok(SD.offerings === 7 + 1 + 2 + 4 + 8, "the picture remembers each of them");
+  ok(GD.villageScene().flecks.length === 22, "twenty-two flecks; never mentioned");
+  tk();
+  ok(offerD.textContent === "a deeper offering — 8" && offerD.disabled, "the ladder ends at four rungs");
+  SD.pop = 8; tk();
+  { const dp = SD.deeper; offerD.click();
+    ok(SD.deeper === dp && SD.pop === 8, "no fifth rung is ever taken"); }
+  ok(dD.getElementById("faithLine").textContent === "faith 10", "the line states it plainly");
+
+  /* the molt survives a reload */
+  wD.dispatchEvent(new wD.Event("beforeunload"));
+  const wD2 = boot(stD).window, dD2 = wD2.document;
+  ok(!dD2.getElementById("sliderRow").classList.contains("ghost"), "reload: the slider holds its place");
+  ok(!dD2.getElementById("earlyWorks").classList.contains("hidden"), "reload: the early works stay folded");
+  ok(dD2.getElementById("row-wood").classList.contains("ghost"), "reload: wood does not come back");
+  ok(dD2.getElementById("offer").textContent === "a deeper offering — 8", "reload: the ladder remembers its rung");
+}
+
+/* ---------- molt 2: the old ledgers never open again ---------- */
+
+{
+  const stE = {};
+  const wE = boot(stE).window, dE = wE.document, GE = wE.__tithe, SE = GE.state;
+  SE.proj.fire = true; SE.proj.shrineX = true; SE.proj.tithe = true;
+  SE.mir.goodyear = true; SE.mir.obedience = true;
+  SE.bld.hut = 2; SE.pop = 4; SE.turn1 = true; SE.offerings = 7;
+  SE.totalFavor = 130; SE.totalWood = 100; SE.totalStone = 100; SE.totalFood = 50;
+  SE.wood = 999; SE.stone = 999; SE.favor = 200; SE.food = 200;
+  SE.last = Date.now() - 1; GE.tick();
+  const tBtn = dE.getElementById("proj-temple");
+  ok(!!tBtn && tBtn.disabled, "a stash without a ledger buys nothing");
+  GE.buyProj(GE.PROJ.find(p => p.id === "temple"));
+  ok(!SE.proj.temple, "the tithe was wood and stone's last bill");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */
