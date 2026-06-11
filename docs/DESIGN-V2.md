@@ -207,8 +207,13 @@ measurement — the more taken, the more believed. That circle is the act.
 complete (Law 12 — the door audits every wallet):
 
 - **eight gates** on cumulative favor (totalFavor), Fibonacci-spaced ×~1.65:
-  `25, 65, 130, 235, 405, 680, 1125, 1850`. Silent: the faith number changes,
-  nothing else (Law 16).
+  `25, 65, 130, 235, 405, 680, 1125, 2900`. Silent: the faith number changes,
+  nothing else (Law 16). The last gate breaks the ratio (×2.6) on purpose: it
+  sits past what the act-2 caps can grant by parking alone, so it opens only
+  when a sign bought at the cap refills — the sign ladder pumps the gate
+  ladder, and the race's two exponentials (§6.5) touch through one wallet.
+  (Tuned from 1850 in M5: at 1850 the gate fell ~60 s after the molt
+  unconditionally and the §6.5 stagger was unreachable.)
 - **four deeper offerings** — the Tokens-of-Goodwill move. After molt 2 the
   offer button's ladder reads `a deeper offering — 1`, then `— 2`, `— 4`,
   `— 8`: villagers, at doubling counts, +1 faith each. Faith was priced in

@@ -175,6 +175,15 @@ const PROJ = [
   { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:90,wood:60}, done:"open", show:s=>s.totalStone>=70, act:1 },
   { id:"temple",  name:"the temple",         flavor:"the hollow learns its name.", cost:{stone:120,wood:80,favor:150}, done:"raised", eff:{out:"favor",x:2}, show:s=>faithOf(s)>=4 },
   { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:{favor:250,food:60,wood:80,stone:30}, done:"standing", show:s=>s.mir.obedience },
+  { id:"songs",   name:"the songs",          flavor:"they sing what they cannot say.", cost:{legend:20}, done:"sung",    eff:{out:"favor",x:1.5}, show:s=>s.legend>0 },
+  { id:"calendar",name:"a calendar",         flavor:"the days get names.",             cost:{legend:45}, done:"named",   eff:{arrive:0.8},        show:s=>s.proj.songs },
+  { id:"count",   name:"the count",          flavor:"every head, every hand.",         cost:{legend:90}, done:"counted", eff:{decimal:true},      show:s=>s.proj.calendar },
+  { id:"lights",  name:"other lights",       flavor:"the scouts come back quiet.",     cost:{favor:90},  done:"seen",    show:s=>s.offerings>=6 },
+  /* the standing threat (law 2): visible and unaffordable for most of the act.
+     the middle term is the characterization — the flock is not exchanged, it is spent */
+  { id:"ascend",  name:"ascension",          flavor:"begin again. the village will not remember. you will.",
+    cost:{favor:2000}, costLine:"13 faith + the flock + 2,000 favor",
+    audit:s=>faithOf(s)>=FAITH_MAX, done:"begun", show:s=>s.proj.lights },
 ];
 
 const MIR = [
@@ -218,7 +227,7 @@ const LEAVE_S  = 20;                   // seconds at zero food before one walks 
 const SURGE    = { x:8, s:90 };        // the offering's gift — it feeds the fields, never the shrine
 const RATS_DRAIN = 0.5;                // food/s while no one watches the granary
 const OFFER    = { base:5, rate:1.5 }; // favor yield per offering
-const FAITH_GATES = [25,65,130,235,405,680,1125,1850]; // cumulative favor; each crossing is silent
+const FAITH_GATES = [25,65,130,235,405,680,1125,2900]; // cumulative favor; the last gate opens only off a sign's refill
 const FAITH_MAX = 13;                  // 1 at the turn + 8 gates + 4 deeper offerings
 const FAVOR_CAP_PER = 200;             // favor cap = 200 x faith — the cap is itself a forecast
 const LEGEND_RATE = 0.3;               // /s, only while favor rests at its cap
@@ -362,7 +371,8 @@ const cap = () => S.bld.hut * CAP_HUT;
 const idle = () => S.pop - S.jobs.f - S.jobs.w - S.jobs.m - S.jobs.p - S.jobs.c;
 const mirArrive = () => MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.arrive ? u.eff.arrive : 1), 1);
 const jobArrive = () => JOBS.reduce((m,j)=> m * (j.eff && j.eff.arrive ? Math.pow(j.eff.arrive, S.jobs[j.id]) : 1), 1);
-const arriveAt = () => ARRIVE.base * Math.pow(ARRIVE.rate, S.pop) * mirArrive() * jobArrive();
+const projArrive = () => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff.arrive ? p.eff.arrive : 1), 1);
+const arriveAt = () => ARRIVE.base * Math.pow(ARRIVE.rate, S.pop) * mirArrive() * jobArrive() * projArrive();
 const arriveCdS = () => ARRIVE_CD * MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.cd ? u.eff.cd : 1), 1);
 const offerYield = () => OFFER.base * Math.pow(OFFER.rate, S.offerings);
 const capS = () => S.bld.granary > 0 ? 8 * OFFLINE_CAP_S : OFFLINE_CAP_S;
@@ -762,11 +772,20 @@ function buyBld(def) {
 }
 function buyProj(def) {
   if (S.proj[def.id] || !def.cost || !canAfford(def.cost)) return;
+  if (def.audit && !def.audit(S)) return;  /* the door audits every wallet (law 12) */
   /* the tithe was wood and stone's last bill: the old ledgers never open again */
   if (S.proj.tithe && (def.cost.wood || def.cost.stone)) return;
   pay(def.cost); S.proj[def.id] = true;
+  if (def.id === "ascend") ascend();
   applyTithe();  /* the molt frame: the slider takes the rows on the same render */
   render(); save();
+}
+
+/* molt 3 — every point of belief, every person, and the bank.
+   the flock is spent here; the board it bought arrives in its own time */
+function ascend() {
+  S.pop = 0; S.doubt = 0; S.doubtT = 0;
+  S.jobs = { f:0, w:0, m:0, p:0, c:0 };
 }
 function buyMir(def) {
   const c = mirCost(def);
@@ -896,6 +915,7 @@ function effLine(def) {
   if (e.out)     return e.out + " ×" + e.x;
   if (e.arrive)  return "arrivals ×" + trim(1 / e.arrive);
   if (e.offline) return "away · " + e.offline + " h";
+  if (e.decimal) return "to the tenth";
   return "";
 }
 
@@ -907,7 +927,8 @@ function render() {
   setText(els["foodVal"], fmtStore(S.food));
   setText(els["woodVal"], S.proj.tithe ? "" : fmtStore(S.wood));
   setText(els["stoneVal"], S.proj.tithe ? "" : fmtStore(S.stone));
-  setText(els["favorVal"], fmtStore(S.favor));
+  /* the count: precision as dread — the bank stops rounding when it matters most */
+  setText(els["favorVal"], S.proj.count ? S.favor.toFixed(1) : fmtStore(S.favor));
   setText(els["foodRate"], (S.pop > 0 || prodOf("food") > 0) ? fmtRate(rateOf("food")) : "");
   setText(els["woodRate"], !S.proj.tithe && prodOf("wood") > 0 ? fmtRate(rateOf("wood")) : "");
   setText(els["stoneRate"], !S.proj.tithe && prodOf("stone") > 0 ? fmtRate(rateOf("stone")) : "");
@@ -919,7 +940,8 @@ function render() {
     : prodOf("favor") > 0 && S.favor < favorCap() ? fmtRate(rateOf("favor")) : "");
   setText(els["legendVal"], fmtStore(S.legend));
   setText(els["legendRate"], S.turn1 && S.favor >= favorCap() ? fmtRate(LEGEND_RATE) : "");
-  setText(els["faithLine"], S.turn1 ? "faith " + faithOf() : "");
+  /* the ceiling shown long before it is reachable is the standing threat (law 2) */
+  setText(els["faithLine"], S.turn1 ? "faith " + faithOf() + (S.proj.lights ? " / " + FAITH_MAX : "") : "");
 
   setText(els["h-act"], lex("h-act"));
   setText(els["act-berries"], lex("act-berries"));
@@ -958,8 +980,9 @@ function render() {
       const dead = r.kind === "proj" && S.proj.tithe && !done && def.cost && !!(def.cost.wood || def.cost.stone);
       const c = r.kind === "mir" ? mirCost(def) : def.cost;
       setText(r.ct, "");
-      setText(r.co, done ? (def.done || "done") : costText(c));
-      r.btn.disabled = done || !def.cost || dead || !canAfford(c);
+      /* ascension states its price in three terms; the wallet audits two of them */
+      setText(r.co, done ? (def.done || "done") : (def.costLine || costText(c)));
+      r.btn.disabled = done || !def.cost || dead || !canAfford(c) || !!(def.audit && !def.audit(S));
       if (done) setText(r.tease, effLine(def));
       if (def.repeat && S.signs > 0) setText(r.tease, "");  /* the tease spends itself on the first sign */
       /* the early works fold into one line */
@@ -1048,9 +1071,10 @@ function tick() {
   if (ratsDrain() > 0) S.food = Math.max(0, S.food - RATS_DRAIN * dt);
 
   /* arrivals: the fire draws them; the food keeps them; they simply come.
-     only an offering leaves a gap on the road (arriveCd is set nowhere else) */
+     only an offering leaves a gap on the road (arriveCd is set nowhere else).
+     after ascension no road leads here anymore */
   S.arriveCd = Math.max(0, S.arriveCd - dt);
-  if (S.proj.fire && S.pop < cap() && S.food >= arriveAt() && S.arriveCd === 0) S.pop++;
+  if (!S.proj.ascend && S.proj.fire && S.pop < cap() && S.food >= arriveAt() && S.arriveCd === 0) S.pop++;
 
   /* an empty larder: one walks into the treeline (never dies) */
   if (S.pop > 0 && S.food <= 0 && upkeep() + ratsDrain() > prodOf("food")) {
@@ -1122,10 +1146,10 @@ window.__tithe = {
   JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, ANCHORS, SITES, PAL,
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE, DOUBT_S, ASIDE,
-  buyBld, buyProj, buyMir, doOffering, fixJobs,
+  buyBld, buyProj, buyMir, doOffering, fixJobs, ascend,
   faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate, stalled, mirCost,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
-  bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, jobArrive, arriveCdS, projOutMult, effLine,
+  bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, jobArrive, projArrive, arriveCdS, projOutMult, effLine,
   smokeRate, glowT, redT, nextName, nameAt,
   genVillage, villageScene, fmt, fmtStore, fmtRate, mulberry32,
 };

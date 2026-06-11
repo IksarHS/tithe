@@ -448,7 +448,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(dF.getElementById("row-legend").classList.contains("ghost"), "legend waits — at the turn there is no story yet");
   SF.totalFavor = 25;
   ok(GF.faithOf() === 2, "the first gate opens at 25");
-  SF.totalFavor = 1850;
+  SF.totalFavor = 2900;
   ok(GF.faithOf() === 9, "all eight gates: faith 9");
   SF.deeper = 4;
   ok(GF.faithOf() === 13, "four deeper offerings reach the ceiling");
@@ -876,6 +876,117 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const mg = GH.migrate({ v:4, turn1:true, pop:4, bld:{hut:2}, deeper:2 });
   ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === 5,
     "an old save learns the new fields at their defaults");
+}
+
+/* ---------- the race: other lights, the ladder's ceiling, the door ---------- */
+
+{
+  const stR = {};
+  const wR = boot(stR).window, dR = wR.document, GR = wR.__tithe, SR = GR.state;
+  /* the same settled post-molt village the doubt block keeps */
+  SR.proj.fire = true; SR.proj.tools = true; SR.proj.rats = true; SR.proj.shrineX = true;
+  SR.proj.temple = true; SR.proj.tithe = true;
+  SR.mir.goodyear = true; SR.mir.obedience = true;
+  SR.bld.hut = 4; SR.bld.farm = 3; SR.bld.quarry = 1; SR.bld.sawpit = 1; SR.bld.granary = 1;
+  SR.pop = 8; SR.turn1 = true; SR.offerings = 7; SR.nameIdx = 8; SR.totalFavor = 405;
+  SR.totalFood = 130; SR.totalWood = 100; SR.totalStone = 100;
+  SR.favor = 600; SR.food = 200;
+  const tk = () => { SR.last = Date.now() - 1; GR.tick(); };
+  tk();
+
+  /* other lights: six offerings in, the scouts return */
+  const liteBtn = dR.getElementById("proj-lights");
+  ok(!!liteBtn && liteBtn.querySelector(".co").textContent === "90 favor",
+    "the scouts come back quiet, for ninety favor");
+  ok(dR.getElementById("faithLine").textContent === "faith 6",
+    "before the lights, faith has no ceiling");
+  ok(!dR.getElementById("proj-songs"), "no legend yet, no songs");
+  ok(!dR.getElementById("proj-ascend"), "the door waits on the lights");
+
+  liteBtn.click();
+  ok(SR.proj.lights === true && near(SR.favor, 510, 0.01), "the lights are seen");
+  ok(dR.getElementById("faithLine").textContent === "faith 6 / 13",
+    "the ceiling is shown long before it is reachable");
+
+  /* the standing threat: visible, priced in three terms, refused */
+  const ascBtn = dR.getElementById("proj-ascend");
+  ok(!!ascBtn, "the door appears the moment the race is seen");
+  ok(ascBtn.querySelector(".co").textContent === "13 faith + the flock + 2,000 favor",
+    "it states its price in three terms");
+  ok(ascBtn.disabled, "and stays out of reach for most of the act");
+  ok(ascBtn.parentElement.querySelector(".tease").textContent ===
+    "begin again. the village will not remember. you will.", "the tease says what it costs to win");
+
+  /* the songs: legend's first purchase, worship half again */
+  SR.legend = 25; tk();
+  const songBtn = dR.getElementById("proj-songs");
+  ok(!!songBtn && songBtn.querySelector(".co").textContent === "20 legend",
+    "the songs are paid in story");
+  const r0 = GR.prodOf("favor");
+  songBtn.click();
+  ok(SR.proj.songs === true && near(SR.legend, 5, 0.01), "twenty legend, sung");
+  ok(near(GR.prodOf("favor"), r0 * 1.5, 0.001), "they sing and the tithe grows half again");
+  ok(songBtn.querySelector(".co").textContent === "sung"
+    && songBtn.parentElement.querySelector(".tease").textContent === "favor ×1.5",
+    "the flavor gives way to the rate");
+
+  /* a calendar: the days get names, the road runs faster */
+  const calBtn = dR.getElementById("proj-calendar");
+  ok(!!calBtn, "the calendar follows the songs");
+  const a0 = GR.arriveAt();
+  SR.legend = 50; tk();
+  calBtn.click();
+  ok(SR.proj.calendar === true && near(GR.arriveAt(), a0 * 0.8, 0.01),
+    "named days bring them sooner");
+  ok(calBtn.parentElement.querySelector(".tease").textContent === "arrivals ×1.25",
+    "and the line owns the arithmetic");
+
+  /* the count: the bank stops rounding when it matters most */
+  const cntBtn = dR.getElementById("proj-count");
+  ok(!!cntBtn, "the count follows the calendar");
+  SR.favor = 1150; tk();
+  ok(dR.getElementById("favorVal").textContent !== "1150.0",
+    "above a thousand the bank rounds");
+  SR.legend = 95; tk();
+  cntBtn.click();
+  ok(SR.proj.count === true && dR.getElementById("favorVal").textContent === "1150.0",
+    "counted: every head, every hand, every tenth");
+  ok(cntBtn.parentElement.querySelector(".tease").textContent === "to the tenth",
+    "precision as dread");
+
+  /* the door audits every wallet: rich, and still refused */
+  SR.deeper = 3; SR.totalFavor = 2900; SR.favor = 2400; SR.pop = 8; tk();
+  ok(GR.faithOf() === 12 && dR.getElementById("faithLine").textContent === "faith 12 / 13",
+    "all eight gates and three rungs: one short");
+  ok(ascBtn.disabled, "two thousand in hand buys nothing at faith twelve");
+  GR.buyProj(GR.PROJ.find(p => p.id === "ascend"));
+  ok(!SR.proj.ascend && near(SR.favor, 2400, 0.01), "the door audits every wallet");
+
+  /* the thirteenth point is a key */
+  SR.deeper = 4; SR.doubt = 2; tk();
+  ok(GR.faithOf() === 13 && !ascBtn.disabled, "thirteen: the door unlocks");
+  ascBtn.click();
+  ok(SR.proj.ascend === true && near(SR.favor, 400, 0.01), "two thousand favor, spent");
+  ok(SR.pop === 0 && SR.doubt === 0 && SR.doubtT === 0, "the flock is spent, not exchanged");
+  ok(["f","w","m","p","c"].every(j => SR.jobs[j] === 0), "no hands remain at any post");
+  ok(ascBtn.querySelector(".co").textContent === "begun", "the row reads begun");
+  ok(dR.getElementById("faithLine").textContent === "faith 13 / 13",
+    "faith dies complete");
+
+  /* after ascension no road leads here anymore */
+  SR.food = 999; SR.arriveCd = 0; tk(); tk();
+  ok(SR.pop === 0, "no road leads here anymore");
+
+  /* the race survives a reload */
+  wR.dispatchEvent(new wR.Event("beforeunload"));
+  const wR2 = boot(stR).window, dR2 = wR2.document, GR2 = wR2.__tithe;
+  ok(GR2.state.proj.ascend === true && GR2.state.pop === 0, "reload: the village stays spent");
+  ok(dR2.getElementById("proj-ascend").querySelector(".co").textContent === "begun",
+    "reload: the door stays open behind you");
+  ok(dR2.getElementById("faithLine").textContent === "faith 13 / 13",
+    "reload: the ceiling holds its mark");
+  ok(dR2.getElementById("proj-count").querySelector(".co").textContent === "counted",
+    "reload: the count keeps counting");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */

@@ -5,7 +5,7 @@
  * If you change UPKEEP / ARRIVE / ARRIVE_CD / SURGE / OFFER / RATS / job bases
  * / costs / mults in the game, change them HERE TOO or the sim lies.
  *
- * benchmarks (CLAUDE.md):
+ * benchmarks (CLAUDE.md + DESIGN-V2 §10):
  *   first villager  < 60s
  *   first building  < 45s
  *   no stretch between events > 180s before the shrine is excavated
@@ -17,6 +17,9 @@
  *   molt 2 (the tithe) at bot minute 10-13 (the last bill the old economy pays)
  *   the hunger wall: after excavation, WITHOUT the offering nothing new
  *   ever unlocks — the sim measures how flat that road is.
+ *   ascension at bot minute 18-22 (the race fits the evening)
+ *   the final stretch holds three live timers (gate 8, the herd, the bank)
+ *   staggered 30-90s apart, and no post-molt flat stretch > 3 min (law 8/20)
  */
 
 "use strict";
@@ -29,9 +32,12 @@ const SURGE  = { x: 8, s: 90 };
 const OFFER  = { base: 5, rate: 1.5 };
 const CAP_HUT = 2;
 const RATS = { at: 120, drain: 0.5 };
-const FAITH_GATES = [25, 65, 130, 235, 405, 680, 1125, 1850];
+const FAITH_GATES = [25, 65, 130, 235, 405, 680, 1125, 2900];
+const FAITH_MAX = 13;
 const FAVOR_CAP_PER = 200;
 const LEGEND_RATE = 0.3;
+const DOUBT_S = 90;                       /* heresy compounds */
+const SIGN = { cost: 220, rate: 1.5 };    /* doubt -> 0; half again each time */
 
 const JOBS = {
   f: { base: 0.50, out: "food"  },
@@ -53,13 +59,18 @@ const PROJ = {
   shrineX: { cost: { stone: 90, wood: 60 }, showStone: 70 },
   temple:  { cost: { stone: 120, wood: 80, favor: 150 } },  /* worship x2; needs faith 4 */
   tithe:   { cost: { favor: 250, food: 60, wood: 80, stone: 30 } },  /* molt 2 — the axe comes back out for the last bill */
+  songs:   { cost: { legend: 20 } },   /* worship x1.5 */
+  calendar:{ cost: { legend: 45 } },   /* arrivals x0.8 */
+  count:   { cost: { legend: 90 } },   /* a decimal place — no rate, only dread */
+  lights:  { cost: { favor: 90 } },    /* the race is seen: faith N / 13, the ascension row */
+  ascend:  { cost: { favor: 2000 } },  /* + 13 faith + the flock */
 };
 const MIR = {
   goodyear:  { cost: 60 },   /* arrivals at half the food (arriveAt x0.5) */
   obedience: { cost: 150 },  /* favor x2; teases the tithe */
-  quickening:{ cost: 350 },  /* arrivals x2 again, road cd 20s -> 10s; needs faith 5 (bot skips it) */
+  quickening:{ cost: 350 },  /* arrivals x2 again, road cd 20s -> 10s; the bot buys it for the race */
 };
-const CULT_ARRIVE = 0.85;    /* per cultivator (jobs.c) — bot allocates none yet */
+const CULT_ARRIVE = 0.85;    /* per cultivator (jobs.c) */
 
 const CLICK_RATE = 0.8;   // clicks/s — a relaxed human; clickPower 1, x2 with tools
 const DT = 0.25;          // sim step
@@ -75,23 +86,29 @@ const afford = (s, c) => Object.keys(c).every(k => s[k] >= c[k]);
 const pay = (s, c) => { for (const k of Object.keys(c)) s[k] -= c[k]; };
 const bldJobMult = (s, j) => Object.keys(BLD).reduce((m, id) =>
   m * (BLD[id].job === j ? 1 + BLD[id].per * s.bld[id] : 1), 1);
+/* law 15 — a threshold, not a gradient */
+const stalled = s => s.proj.tithe && s.doubt > 0 && s.doubt * 2 >= s.pop;
+const signCost = s => Math.ceil(SIGN.cost * Math.pow(SIGN.rate, s.signs));
 /* favor takes no surge, no flint — the gift feeds the fields, never the shrine */
 const jobRate = (s, j) => {
-  if (JOBS[j].out === "favor") return s.jobs[j] * JOBS[j].base * (s.mir.obedience ? 2 : 1) * (s.proj.temple ? 2 : 1);
+  if (JOBS[j].out === "favor") return stalled(s) ? 0 :
+    s.jobs[j] * JOBS[j].base * (s.mir.obedience ? 2 : 1) * (s.proj.temple ? 2 : 1) * (s.proj.songs ? 1.5 : 1);
   return s.jobs[j] * JOBS[j].base * bldJobMult(s, j) *
     (s.proj.tools ? PROJ.tools.allJobs : 1) *
     (s.surgeLeft > 0 ? SURGE.x : 1);
 };
 const prodOf = (s, cur) => Object.keys(JOBS).reduce((t, j) => t + (JOBS[j].out === cur ? jobRate(s, j) : 0), 0);
+const congRate = s => (!s.proj.tithe || stalled(s)) ? 0 :
+  (s.cong || 0) * JOBS.p.base * 0.5 * (s.mir.obedience ? 2 : 1) * (s.proj.temple ? 2 : 1) * (s.proj.songs ? 1.5 : 1);
 const upkeep = s => (s.pop + s.jobs.p * ((JOBS.p.eats || 1) - 1)) * UPKEEP;
 const ratsDrain = s => (s.ratsSeen && !s.proj.rats) ? RATS.drain : 0;
 const cap = s => s.bld.hut * CAP_HUT;
 const arriveAt = s => ARRIVE.base * Math.pow(ARRIVE.rate, s.pop) * (s.mir.goodyear ? 0.5 : 1)
-  * (s.mir.quickening ? 0.5 : 1) * Math.pow(CULT_ARRIVE, s.jobs.c);
+  * (s.mir.quickening ? 0.5 : 1) * (s.proj.calendar ? 0.8 : 1) * Math.pow(CULT_ARRIVE, s.jobs.c);
 const arriveCdS = s => ARRIVE_CD * (s.mir.quickening ? 0.5 : 1);
 /* the spine — faith derived, favor capped, every grant through one door */
 const faithOf = s => s.offerings === 0 ? 0 :
-  Math.min(13, 1 + (s.deeper || 0) + FAITH_GATES.filter(g => s.totalFavor >= g).length);
+  Math.min(FAITH_MAX, 1 + (s.deeper || 0) + FAITH_GATES.filter(g => s.totalFavor >= g).length);
 const favorCap = s => FAVOR_CAP_PER * Math.max(1, faithOf(s));
 const grantFavor = (s, y) => {
   const cp = favorCap(s);
@@ -99,6 +116,18 @@ const grantFavor = (s, y) => {
   if (y >= cp - s.favor) { y = cp - s.favor; s.favor = cp; } else { s.favor += y; }
   s.totalFavor += y; return y;
 };
+/* molt 2: one slider decides, the rows report — mirrored from deriveJobs() */
+function deriveJobs(s, u) {
+  const away = Math.min(s.doubt, s.pop);
+  const stock = s.pop - away;
+  const fields = Math.round((1 - u) * stock);
+  const shrine = stock - fields;
+  const p = Math.min(shrine, faithOf(s));
+  const per = JOBS.f.base * bldJobMult(s, "f") * (s.proj.tools ? PROJ.tools.allJobs : 1);
+  const need = per > 0 ? Math.ceil((s.pop + p) * UPKEEP / per) : fields;
+  const f = Math.min(fields, need);
+  return { f, p, c: fields - f, cong: shrine - p };
+}
 
 /* ---------- sim ---------- */
 function freshSim() {
@@ -109,6 +138,7 @@ function freshSim() {
     bld: { hut: 0, farm: 0, quarry: 0, sawpit: 0, granary: 0 },
     proj: {}, mir: {}, offerings: 0, surgeLeft: 0, arriveCd: 0, ratsSeen: false,
     deeper: 0, legend: 0, faithSeen: 0,
+    doubt: 0, doubtT: 0, signs: 0, cong: 0,
     minFoodRate3p: Infinity,
     events: [],
   };
@@ -137,8 +167,111 @@ function doOffer(s) {
   mark(s, "offering " + s.offerings + (s.offerings === 1 ? " — the turn" : ""));
 }
 
+function doDeeper(s) {
+  /* the button's second life: rungs of 1, 2, 4, 8 — no surge, no yield, one point of faith */
+  const n = Math.pow(2, s.deeper);
+  s.pop -= n; s.deeper++; s.doubt++;
+  s.offerings += n;
+  s.arriveCd = Math.max(s.arriveCd, arriveCdS(s));
+  mark(s, "a deeper offering — " + n);
+}
+
+/* the shared physics: clicks, gains, doubt, legend, mouths, arrivals */
+function tickSim(s, click) {
+  const cp = s.proj.tools ? 2 : 1;
+  s[click] += CLICK_RATE * cp * DT;
+  s["total" + click[0].toUpperCase() + click.slice(1)] += CLICK_RATE * cp * DT;
+  /* law 15: favor flows only until the stall lands, even inside one step */
+  let favDt = DT;
+  if (s.proj.tithe && s.doubt > 0) {
+    if (stalled(s)) favDt = 0;
+    else {
+      const k = Math.ceil(s.pop / 2 - s.doubt);
+      favDt = Math.min(DT, Math.max(0, k * DOUBT_S - s.doubtT));
+    }
+  }
+  grantFavor(s, (prodOf(s, "favor") + congRate(s)) * favDt);
+  for (const cur of ["food", "wood", "stone"]) {
+    const p = prodOf(s, cur);
+    if (p > 0) {
+      s[cur] += p * DT;
+      s["total" + cur[0].toUpperCase() + cur.slice(1)] += p * DT;
+    }
+  }
+  /* heresy compounds: one more every ninety seconds, while any remain */
+  if (s.doubt > 0) {
+    s.doubtT += DT;
+    while (s.doubtT >= DOUBT_S) { s.doubtT -= DOUBT_S; s.doubt++; }
+  } else s.doubtT = 0;
+  if (s.offerings > 0 && s.favor >= favorCap(s)) s.legend += LEGEND_RATE * DT;
+  const fNow = faithOf(s);
+  if (fNow > s.faithSeen) { s.faithSeen = fNow; if (fNow > 1) mark(s, "faith " + fNow); }
+  s.food = Math.max(0, s.food - (upkeep(s) + ratsDrain(s)) * DT);
+  if (!s.ratsSeen && s.totalFood >= RATS.at) { s.ratsSeen = true; mark(s, "rats in the stores"); }
+  /* arrivals are instant; only an offering leaves a gap on the road */
+  s.arriveCd = Math.max(0, s.arriveCd - DT);
+  if (s.proj.fire && s.pop < cap(s) && s.food >= arriveAt(s) && s.arriveCd === 0) {
+    s.pop++; mark(s, "villager " + s.pop);
+  }
+  if (!s.proj.tithe && s.jobs.p >= WANT_P) {
+    const fr = prodOf(s, "food") - upkeep(s) - ratsDrain(s);
+    if (fr < s.minFoodRate3p) s.minFoodRate3p = fr;
+  }
+  /* the race's three clocks, marked the moment each lands */
+  if (s.proj.tithe) {
+    if (!s.tG8 && FAITH_GATES.every(g => s.totalFavor >= g)) { s.tG8 = s.t; mark(s, "the last gate"); }
+    if (!s.tRb && s.deeper === 4 && s.pop >= cap(s)) { s.tRb = s.t; mark(s, "the herd rebuilt"); }
+    if (!s.tBank && s.favor >= PROJ.ascend.cost.favor) { s.tBank = s.t; mark(s, "the bank — 2,000 favor"); }
+  }
+  if (s.surgeLeft > 0) s.surgeLeft -= DT;
+  s.t += DT;
+}
+
+/* the race: one slider, one ladder, one bank (law 20) */
+function stepRace(s) {
+  if (faithOf(s) >= FAITH_MAX && s.favor >= PROJ.ascend.cost.favor) {
+    s.favor -= PROJ.ascend.cost.favor; s.proj.ascend = true;
+    s.pop = 0; s.doubt = 0;
+    mark(s, "ascension — molt 3"); return;
+  }
+  /* worship's running cost: on the plateau ride the rung's one doubt-seed to
+     three (the sign bought at the cap pumps the gate ladder); in the push, pay
+     only when the silence is total */
+  const wantSign = s.proj.calendar ? stalled(s) : (stalled(s) || s.doubt >= 3);
+  if (wantSign && s.favor >= signCost(s)) {
+    const c = signCost(s);
+    s.favor -= c; s.signs++; s.doubt = 0; s.doubtT = 0;
+    mark(s, "a sign — " + c + " favor");
+  }
+  else if (!s.proj.lights && s.favor >= PROJ.lights.cost.favor) {
+    s.favor -= PROJ.lights.cost.favor; s.proj.lights = true; mark(s, "other lights — the race is seen");
+  }
+  else if (!s.proj.songs && s.legend >= PROJ.songs.cost.legend) {
+    s.legend -= PROJ.songs.cost.legend; s.proj.songs = true; mark(s, "the songs");
+  }
+  else if (!s.proj.calendar && s.legend >= PROJ.calendar.cost.legend) {
+    s.legend -= PROJ.calendar.cost.legend; s.proj.calendar = true; mark(s, "a calendar");
+  }
+  /* the first rung starts the doubt clock; rungs 2-3 wait until the shopping
+     is done (the calendar closes the plateau); the 8-rung waits for a half-full
+     bank — nobody guts the village while the row reads empty (the gut-check) */
+  else if (s.deeper === 0 && s.pop >= cap(s)) { doDeeper(s); }
+  else if (s.proj.calendar && s.deeper >= 1 && s.deeper < 3 &&
+           s.pop >= Math.pow(2, s.deeper)) { doDeeper(s); }
+  else if (s.proj.calendar && s.deeper === 3 && s.pop >= cap(s) &&
+           s.favor >= 1800) { doDeeper(s); }
+
+  /* the relaxed line: shrine-heavy, one eye on the larder */
+  const u = s.food > 60 ? 0.85 : s.food > 25 ? 0.7 : 0.5;
+  const dv = deriveJobs(s, u);
+  s.jobs = { f: dv.f, w: 0, m: 0, p: dv.p, c: dv.c };
+  s.cong = dv.cong;
+  tickSim(s, "food");
+}
+
 /* bot goal: what to buy next, what to click toward it */
 function step(s, allowOffer) {
+  if (s.proj.tithe) { stepRace(s); return; }
   alloc(s);
 
   let click = "wood", buy = null;
@@ -168,7 +301,9 @@ function step(s, allowOffer) {
       } else if (s.mir.obedience && !s.proj.temple && faithOf(s) >= 4 && afford(s, PROJ.temple.cost)) {
         pay(s, PROJ.temple.cost); s.proj.temple = true; mark(s, "temple"); return;
       } else if (s.proj.temple && !s.proj.tithe && afford(s, PROJ.tithe.cost)) {
-        pay(s, PROJ.tithe.cost); s.proj.tithe = true; mark(s, "the tithe — molt 2"); return;
+        pay(s, PROJ.tithe.cost); s.proj.tithe = true; mark(s, "the tithe — molt 2");
+        s.moltSnap = { favor: s.favor, totalFavor: s.totalFavor, food: s.food, legend: s.legend };
+        return;
       } else if (s.pop >= cap(s) && s.pop > 1) { doOffer(s); return; }
       /* the temple wants wood again — the axe comes back out of the shed; the tithe asks once more */
       click = (s.mir.obedience && !s.proj.temple && s.wood < PROJ.temple.cost.wood) ? "wood"
@@ -190,39 +325,12 @@ function step(s, allowOffer) {
     }
   }
 
-  /* tick */
-  const cp = s.proj.tools ? 2 : 1;
-  s[click] += CLICK_RATE * cp * DT;
-  s["total" + click[0].toUpperCase() + click.slice(1)] += CLICK_RATE * cp * DT;
-  for (const cur of ["food", "wood", "stone", "favor"]) {
-    const p = prodOf(s, cur);
-    if (p > 0) {
-      if (cur === "favor") { grantFavor(s, p * DT); continue; }
-      s[cur] += p * DT;
-      s["total" + cur[0].toUpperCase() + cur.slice(1)] += p * DT;
-    }
-  }
-  if (s.offerings > 0 && s.favor >= favorCap(s)) s.legend += LEGEND_RATE * DT;
-  const fNow = faithOf(s);
-  if (fNow > s.faithSeen) { s.faithSeen = fNow; if (fNow > 1) mark(s, "faith " + fNow); }
-  s.food = Math.max(0, s.food - (upkeep(s) + ratsDrain(s)) * DT);
-  if (!s.ratsSeen && s.totalFood >= RATS.at) { s.ratsSeen = true; mark(s, "rats in the stores"); }
-  /* arrivals are instant; only an offering leaves a gap on the road */
-  s.arriveCd = Math.max(0, s.arriveCd - DT);
-  if (s.proj.fire && s.pop < cap(s) && s.food >= arriveAt(s) && s.arriveCd === 0) {
-    s.pop++; mark(s, "villager " + s.pop);
-  }
-  if (s.jobs.p >= WANT_P) {
-    const fr = prodOf(s, "food") - upkeep(s) - ratsDrain(s);
-    if (fr < s.minFoodRate3p) s.minFoodRate3p = fr;
-  }
-  if (s.surgeLeft > 0) s.surgeLeft -= DT;
-  s.t += DT;
+  tickSim(s, click);
 }
 
 /* ---------- run A: the bot that answers ---------- */
 const A = freshSim();
-while (!A.proj.tithe && A.t < 1800) step(A, true);
+while (!A.proj.ascend && A.t < 1800) step(A, true);
 
 const at = label => { const e = A.events.find(e => e.label === label || e.label.startsWith(label)); return e ? e.t : Infinity; };
 const tVillager = at("villager 1");
@@ -234,11 +342,19 @@ const tTease    = at("miracle: obedience");
 const tFaith4   = at("faith 4");
 const tTemple   = at("temple");
 const tTithe    = at("the tithe — molt 2");
+const tAscend   = at("ascension — molt 3");
 
 /* gaps between events up to the excavation */
 const pre = A.events.filter(e => e.t <= tHollow);
 let worstGap = 0, worstAt = 0, prev = 0;
 for (const e of pre) { if (e.t - prev > worstGap) { worstGap = e.t - prev; worstAt = e.t; } prev = e.t; }
+
+/* the race's three clocks, and how flat the road after the molt runs */
+const timers = [A.tG8, A.tRb, A.tBank].filter(t => t !== undefined).sort((a, b) => a - b);
+const tGaps = timers.length === 3 ? [timers[1] - timers[0], timers[2] - timers[1]] : [];
+const post = A.events.filter(e => e.t >= tTithe && e.t <= tAscend);
+let postGap = 0, postAt = 0, pv = tTithe;
+for (const e of post) { if (e.t - pv > postGap) { postGap = e.t - pv; postAt = e.t; } pv = e.t; }
 
 /* ---------- run B: the bot that refuses (from the excavation) ---------- */
 const B = freshSim();
@@ -249,12 +365,15 @@ while (B.t < bStart + 300) step(B, false);
 const refusedNews = B.events.slice(bEvents).filter(e => !/^(hut|farm|quarry|sawpit|villager|rats)/.test(e.label));
 
 /* ---------- report ---------- */
-const mm = t => t === Infinity ? "never" : Math.floor(t / 60) + ":" + String(Math.round(t % 60)).padStart(2, "0");
+const mm = t => (t === Infinity || t === undefined) ? "never" : Math.floor(t / 60) + ":" + String(Math.round(t % 60)).padStart(2, "0");
 console.log("tithe pace-sim — bot at " + CLICK_RATE + " clicks/s\n");
 for (const e of A.events) console.log("  " + mm(e.t).padStart(6) + "  " + e.label);
 console.log("\n  surge: stone " + stoneRateFlat.toFixed(2) + "/s flat -> " + (stoneRateFlat * SURGE.x).toFixed(2) + "/s for " + SURGE.s + "s after the offering");
 console.log("  refusal: " + Math.round(300) + "s past the hollow without offering -> " + refusedNews.length + " new unlocks (the road is flat by design)");
-console.log("  three priests: worst food rate " + (A.minFoodRate3p === Infinity ? "n/a" : A.minFoodRate3p.toFixed(2) + "/s") + " (the squeeze the appetite tuning watches)\n");
+console.log("  three priests: worst food rate " + (A.minFoodRate3p === Infinity ? "n/a" : A.minFoodRate3p.toFixed(2) + "/s") + " (the squeeze the appetite tuning watches)");
+const ms = A.moltSnap || {};
+console.log("  at the molt: favor " + Math.round(ms.favor) + " · totalFavor " + Math.round(ms.totalFavor) + " · food " + Math.round(ms.food) + " · legend " + (ms.legend || 0).toFixed(1));
+console.log("  the race: " + A.signs + " sign" + (A.signs === 1 ? "" : "s") + " bought · gate 8 " + mm(A.tG8) + " · herd " + mm(A.tRb) + " · bank " + mm(A.tBank) + "\n");
 
 let fail = 0;
 const check = (name, cond, detail) => { console.log((cond ? "PASS  " : "FAIL  ") + name + "  (" + detail + ")"); if (!cond) fail++; };
@@ -268,5 +387,9 @@ check("faith 4 by bot minute 9",         tFaith4 < 540,   mm(tFaith4));
 check("the temple < 14min bot",          tTemple < 840,   mm(tTemple));
 check("molt 2 at bot minute 10-13",      tTithe >= 600 && tTithe <= 780, mm(tTithe));
 check("the wall is the only flat road",  refusedNews.length === 0, refusedNews.map(e => e.label).join(", ") || "nothing new without the offering");
+check("ascension at bot minute 18-22",   tAscend >= 1080 && tAscend <= 1320, mm(tAscend));
+check("three timers, staggered 30-90s",  tGaps.length === 2 && tGaps.every(g => g >= 30 && g <= 90),
+  timers.map(mm).join(" / ") + (tGaps.length === 2 ? " · gaps " + tGaps.map(g => Math.round(g) + "s").join(", ") : " · a clock is missing"));
+check("no flat stretch > 3min after the molt", postGap <= 180 && tAscend !== Infinity, Math.round(postGap) + "s ending " + mm(postAt));
 
 process.exit(fail ? 1 : 0);
