@@ -224,7 +224,7 @@ ok(d.getElementById("surgeLine").textContent === "next · 7 favor", "between dea
 /* ---------- priests and miracles ---------- */
 
 S().bld.hut = 2;  /* room first: the clamp law holds even in tests */
-S().pop = 4; S().jobs = { f:1, w:0, m:1, p:0 }; ff(0.001);
+S().pop = 4; S().jobs = { f:1, w:0, m:1, p:0, c:0 }; ff(0.001);
 d.getElementById("jp-p").click();
 ok(S().jobs.p === 1, "one priest");
 ok(near(G.jobRate("p"), 0.2), "worship flows at its own pace — no flint sharpens a prayer");
@@ -514,6 +514,118 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(GM.state.favor === 400, "favor folds back under the cap (faith 2)");
   ok(GM.state.jobs.p === 2, "the priests fit the faith");
   ok(GM.state.v === 4 && GM.state.universes === 1, "restamped v4; one universe, as always");
+}
+
+/* ---------- the cultivator: arrivals, not the larder ---------- */
+
+{
+  const stC2 = {};
+  const wC2 = boot(stC2).window, dC2 = wC2.document, GC2 = wC2.__tithe, SC2 = GC2.state;
+  ok(dC2.getElementById("job-c").classList.contains("ghost"), "the cultivator slot waits as a ghost");
+  SC2.proj.fire = true; SC2.bld.hut = 2; SC2.pop = 4; SC2.food = 999;  /* at cap: no arrival mid-test */
+  SC2.turn1 = true; SC2.mir.goodyear = true;
+  SC2.last = Date.now() - 1; GC2.tick();
+  ok(!dC2.getElementById("job-c").classList.contains("ghost"), "a good year wakes the cultivators");
+  const barB = GC2.arriveAt();
+  dC2.getElementById("jp-c").click();
+  ok(SC2.jobs.c === 1, "one cultivator in the rows");
+  ok(near(GC2.arriveAt(), barB * 0.85, barB * 0.01), "the bar comes down by fifteen parts");
+  dC2.getElementById("jp-c").click();
+  ok(near(GC2.arriveAt(), barB * 0.85 * 0.85, barB * 0.01), "and they compound");
+  ok(GC2.prodOf("food") === 0, "the cultivator tends arrivals, not the larder");
+  ok(near(GC2.upkeep(), 4 * 0.25), "and eats like anyone");
+  SC2.jobs = { f:0, w:0, m:0, p:0, c:1 };
+  const figC = GC2.villageScene().figures[0];
+  ok(figC.job === "c" && near(figC.row, GC2.SITES.c.row, 0.01), "the cultivator walks to the farms");
+}
+
+/* ---------- the granary: the night holds eight hours ---------- */
+
+{
+  const stG2 = {};
+  const wG2 = boot(stG2).window, dG2 = wG2.document, GG2 = wG2.__tithe, SG2 = GG2.state;
+  SG2.proj.fire = true; SG2.bld.hut = 1; SG2.pop = 1; SG2.food = 50;
+  ok(GG2.capS() === 3600, "before the granary, one hour is all the night keeps");
+  SG2.turn1 = true;
+  SG2.last = Date.now() - 1; GG2.tick();
+  const gBtn = dG2.getElementById("bld-granary");
+  ok(!!gBtn, "the turn teases the granary");
+  ok(gBtn.disabled, "eighty wood and forty stone — not yet");
+  SG2.wood = 80; SG2.stone = 40; SG2.last = Date.now() - 1; GG2.tick();
+  gBtn.click();
+  ok(SG2.bld.granary === 1 && SG2.wood === 0 && SG2.stone === 0, "the granary takes its price");
+  ok(GG2.capS() === 8 * 3600, "the night holds eight hours now");
+  ok(gBtn.nextElementSibling.textContent === "away · 8 h", "the granary states its work");
+  ok(gBtn.disabled && gBtn.querySelector(".co").textContent === "", "one granary; no second is quoted");
+  ok(GG2.villageScene().builds.some(b => b.sprite === "granary" && b.col === GG2.ANCHORS.granary.col),
+    "it stands in the meadow's last open run");
+}
+{
+  /* ten hours away count eight — the granary's word is kept offline */
+  const sv = {
+    v: 4, turn1: true, pop: 1, food: 8000, wood: 0,
+    jobs: { f:0, w:1, m:0, p:0, c:0 }, bld: { hut:1, farm:0, quarry:0, sawpit:0, granary:1 },
+    proj: { fire: true }, mir: {}, surgeLeft: 0,
+    last: Date.now() - 10 * 3600 * 1000,
+  };
+  const st8 = { "tithe-save": JSON.stringify(sv) };
+  const G8 = boot(st8).window.__tithe;
+  G8.tick();
+  ok(near(G8.state.wood, 0.35 * 8 * 3600, 3), "ten hours away count eight");
+}
+
+/* ---------- the temple: the hollow learns its name ---------- */
+
+{
+  const stT = {};
+  const wT = boot(stT).window, dT = wT.document, GT = wT.__tithe, ST = GT.state;
+  ST.proj.fire = true; ST.proj.shrineX = true; ST.bld.hut = 2; ST.pop = 4;
+  ST.turn1 = true; ST.offerings = 1; ST.food = 999;
+  ST.last = Date.now() - 1; GT.tick();
+  ok(!dT.getElementById("proj-temple"), "the temple keeps quiet below faith 4");
+  ST.totalFavor = 130;
+  ST.last = Date.now() - 1; GT.tick();
+  const tBtn = dT.getElementById("proj-temple");
+  ok(!!tBtn, "faith 4: the temple is teased");
+  ok(GT.villageScene().builds.some(b => b.sprite === "shrine"), "the shrine still stands meanwhile");
+  ST.jobs.p = 1;
+  ok(near(GT.jobRate("p"), 0.2), "worship before: one prayer's pace");
+  ST.stone = 120; ST.wood = 80; ST.favor = 150;
+  ST.last = Date.now() - 1; GT.tick();
+  tBtn.click();
+  ok(ST.proj.temple === true && ST.stone === 0 && ST.wood === 0 && near(ST.favor, 0, 0.01),
+    "stone, wood and favor — the temple takes all three");
+  ok(near(GT.jobRate("p"), 0.4), "worship doubled under the roof");
+  ok(tBtn.querySelector(".co").textContent === "raised", "the row reads raised");
+  const scT = GT.villageScene();
+  ok(scT.builds.some(b => b.sprite === "temple" && b.col === GT.ANCHORS.hollow.col),
+    "the temple grows at the shrine's own anchor");
+  ok(!scT.builds.some(b => b.sprite === "shrine" || b.sprite === "hollow"),
+    "one anchor, one life at a time");
+  ok(scT.flecks.length === 1, "the flecks are not washed by the raising");
+}
+
+/* ---------- the quickening: the cradles answer ---------- */
+
+{
+  const stQ = {};
+  const wQ = boot(stQ).window, dQ = wQ.document, GQ = wQ.__tithe, SQ = GQ.state;
+  SQ.proj.fire = true; SQ.proj.shrineX = true; SQ.bld.hut = 2; SQ.pop = 4; SQ.food = 999;
+  SQ.turn1 = true; SQ.offerings = 1; SQ.mir.goodyear = true; SQ.mir.obedience = true;
+  SQ.totalFavor = 130;
+  SQ.last = Date.now() - 1; GQ.tick();
+  ok(!dQ.getElementById("mir-quickening"), "below faith 5, the cradles keep their own counsel");
+  ok(GQ.arriveCdS() === 20, "the road takes its twenty seconds");
+  SQ.totalFavor = 235;
+  SQ.last = Date.now() - 1; GQ.tick();
+  const qBtn = dQ.getElementById("mir-quickening");
+  ok(!!qBtn, "faith 5: the quickening is offered");
+  SQ.favor = 350; SQ.last = Date.now() - 1; GQ.tick();
+  qBtn.click();
+  ok(SQ.mir.quickening === true && SQ.favor === 0, "three hundred fifty favor, paid");
+  ok(near(GQ.arriveAt(), 15 * Math.pow(1.3, 4) * 0.5 * 0.5, 0.05),
+    "the bar halves on top of the year — the bottleneck moves to food");
+  ok(GQ.arriveCdS() === 10, "and the road shortens to ten");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */

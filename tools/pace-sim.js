@@ -13,6 +13,7 @@
  *   first miracle   1-4 min after the turn (earned, not instant)
  *   the tithe teased < 12 bot-min total (the second-session hook lands in one)
  *   faith 4 by bot minute 9 (the spine climbs while the bot answers)
+ *   the temple < 14 bot-min (act 2's first big sink lands the same evening)
  *   the hunger wall: after excavation, WITHOUT the offering nothing new
  *   ever unlocks — the sim measures how flat that road is.
  */
@@ -42,17 +43,21 @@ const BLD = {  /* max = field anchors, mirrored from index.html */
   farm:   { cost: { wood: 25 },            rate: 1.18, max: 3, job: "f", per: 0.25 },
   quarry: { cost: { wood: 60 },            rate: 1.18, max: 1, job: "m", per: 0.25 },
   sawpit: { cost: { wood: 50, stone: 15 }, rate: 1.18, max: 1, job: "w", per: 0.25 },
+  granary:{ cost: { wood: 80, stone: 40 }, rate: 1.18, max: 1 },  /* offline cap x8 — no value to a bot that never leaves */
 };
 const PROJ = {
   fire:    { cost: { wood: 10 } },
   tools:   { cost: { wood: 30, stone: 10 }, allJobs: 1.5 },
   rats:    { cost: { wood: 60 } },
   shrineX: { cost: { stone: 90, wood: 60 }, showStone: 70 },
+  temple:  { cost: { stone: 120, wood: 80, favor: 150 } },  /* worship x2; needs faith 4 */
 };
 const MIR = {
   goodyear:  { cost: 60 },   /* arrivals at half the food (arriveAt x0.5) */
   obedience: { cost: 150 },  /* favor x2; teases the tithe */
+  quickening:{ cost: 350 },  /* arrivals x2 again, road cd 20s -> 10s; needs faith 5 (bot skips it) */
 };
+const CULT_ARRIVE = 0.85;    /* per cultivator (jobs.c) — bot allocates none yet */
 
 const CLICK_RATE = 0.8;   // clicks/s — a relaxed human; clickPower 1, x2 with tools
 const DT = 0.25;          // sim step
@@ -70,7 +75,7 @@ const bldJobMult = (s, j) => Object.keys(BLD).reduce((m, id) =>
   m * (BLD[id].job === j ? 1 + BLD[id].per * s.bld[id] : 1), 1);
 /* favor takes no surge, no flint — the gift feeds the fields, never the shrine */
 const jobRate = (s, j) => {
-  if (JOBS[j].out === "favor") return s.jobs[j] * JOBS[j].base * (s.mir.obedience ? 2 : 1);
+  if (JOBS[j].out === "favor") return s.jobs[j] * JOBS[j].base * (s.mir.obedience ? 2 : 1) * (s.proj.temple ? 2 : 1);
   return s.jobs[j] * JOBS[j].base * bldJobMult(s, j) *
     (s.proj.tools ? PROJ.tools.allJobs : 1) *
     (s.surgeLeft > 0 ? SURGE.x : 1);
@@ -79,7 +84,9 @@ const prodOf = (s, cur) => Object.keys(JOBS).reduce((t, j) => t + (JOBS[j].out =
 const upkeep = s => (s.pop + s.jobs.p * ((JOBS.p.eats || 1) - 1)) * UPKEEP;
 const ratsDrain = s => (s.ratsSeen && !s.proj.rats) ? RATS.drain : 0;
 const cap = s => s.bld.hut * CAP_HUT;
-const arriveAt = s => ARRIVE.base * Math.pow(ARRIVE.rate, s.pop) * (s.mir.goodyear ? 0.5 : 1);
+const arriveAt = s => ARRIVE.base * Math.pow(ARRIVE.rate, s.pop) * (s.mir.goodyear ? 0.5 : 1)
+  * (s.mir.quickening ? 0.5 : 1) * Math.pow(CULT_ARRIVE, s.jobs.c);
+const arriveCdS = s => ARRIVE_CD * (s.mir.quickening ? 0.5 : 1);
 /* the spine — faith derived, favor capped, every grant through one door */
 const faithOf = s => s.offerings === 0 ? 0 :
   Math.min(13, 1 + (s.deeper || 0) + FAITH_GATES.filter(g => s.totalFavor >= g).length);
@@ -96,8 +103,8 @@ function freshSim() {
   return {
     t: 0, food: 0, wood: 0, stone: 0, favor: 0,
     totalFood: 0, totalWood: 0, totalStone: 0, totalFavor: 0,
-    pop: 0, jobs: { f: 0, w: 0, m: 0, p: 0 },
-    bld: { hut: 0, farm: 0, quarry: 0, sawpit: 0 },
+    pop: 0, jobs: { f: 0, w: 0, m: 0, p: 0, c: 0 },
+    bld: { hut: 0, farm: 0, quarry: 0, sawpit: 0, granary: 0 },
     proj: {}, mir: {}, offerings: 0, surgeLeft: 0, arriveCd: 0, ratsSeen: false,
     deeper: 0, legend: 0, faithSeen: 0,
     minFoodRate3p: Infinity,
@@ -110,7 +117,7 @@ const mark = (s, label) => s.events.push({ t: s.t, label });
 function alloc(s) {
   const fPer = JOBS.f.base * bldJobMult(s, "f") * (s.proj.tools ? 1.5 : 1);
   const wantP = s.offerings > 0 ? Math.min(WANT_P, faithOf(s)) : 0;  /* the priests fit the faith */
-  const J = { f: 0, w: 0, m: 0, p: 0 };
+  const J = { f: 0, w: 0, m: 0, p: 0, c: 0 };
   let left = s.pop;
   const need = (s.pop + wantP) * UPKEEP + ratsDrain(s) + 0.01;
   J.f = Math.min(left, Math.ceil(need / fPer)); left -= J.f;
@@ -123,7 +130,7 @@ function doOffer(s) {
   s.pop--; s.offerings++;
   grantFavor(s, OFFER.base * Math.pow(OFFER.rate, s.offerings - 1));
   s.surgeLeft = SURGE.s;
-  s.arriveCd = Math.max(s.arriveCd, ARRIVE_CD);
+  s.arriveCd = Math.max(s.arriveCd, arriveCdS(s));
   alloc(s);
   mark(s, "offering " + s.offerings + (s.offerings === 1 ? " — the turn" : ""));
 }
@@ -156,8 +163,11 @@ function step(s, allowOffer) {
       } else if (s.mir.goodyear && !s.mir.obedience && s.favor >= MIR.obedience.cost) {
         s.favor -= MIR.obedience.cost; s.mir.obedience = true;
         mark(s, "miracle: obedience — the tithe teased"); return;
+      } else if (s.mir.obedience && !s.proj.temple && faithOf(s) >= 4 && afford(s, PROJ.temple.cost)) {
+        pay(s, PROJ.temple.cost); s.proj.temple = true; mark(s, "temple"); return;
       } else if (s.pop >= cap(s) && s.pop > 1) { doOffer(s); return; }
-      click = "food";
+      /* the temple wants wood again — the axe comes back out of the shed */
+      click = (s.mir.obedience && !s.proj.temple && s.wood < PROJ.temple.cost.wood) ? "wood" : "food";
     }
   }
 
@@ -207,7 +217,7 @@ function step(s, allowOffer) {
 
 /* ---------- run A: the bot that answers ---------- */
 const A = freshSim();
-while ((!A.mir.obedience || faithOf(A) < 4) && A.t < 1800) step(A, true);
+while (!A.proj.temple && A.t < 1800) step(A, true);
 
 const at = label => { const e = A.events.find(e => e.label === label || e.label.startsWith(label)); return e ? e.t : Infinity; };
 const tVillager = at("villager 1");
@@ -217,6 +227,7 @@ const tOffer    = at("offering 1");
 const tMiracle  = at("miracle: a good year");
 const tTease    = at("miracle: obedience");
 const tFaith4   = at("faith 4");
+const tTemple   = at("temple");
 
 /* gaps between events up to the excavation */
 const pre = A.events.filter(e => e.t <= tHollow);
@@ -248,6 +259,7 @@ check("first offering < 8min",           tOffer < 480,    mm(tOffer));
 check("first miracle 1-4min after turn", tMiracle - tOffer >= 60 && tMiracle - tOffer <= 240, mm(tMiracle) + " (turn +" + Math.round(tMiracle - tOffer) + "s)");
 check("the tithe teased < 12min total",  tTease < 720,    mm(tTease));
 check("faith 4 by bot minute 9",         tFaith4 < 540,   mm(tFaith4));
+check("the temple < 14min bot",          tTemple < 840,   mm(tTemple));
 check("the wall is the only flat road",  refusedNews.length === 0, refusedNews.map(e => e.label).join(", ") || "nothing new without the offering");
 
 process.exit(fail ? 1 : 0);

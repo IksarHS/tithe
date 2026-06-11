@@ -107,6 +107,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
       <div class="job ghost" id="job-w"><span class="jname">woodcutter</span><span class="jn" id="jn-w">0</span><button class="jb" id="jm-w" aria-label="fewer woodcutters">−</button><button class="jb" id="jp-w" aria-label="more woodcutters">+</button></div>
       <div class="job ghost" id="job-m"><span class="jname">mason</span><span class="jn" id="jn-m">0</span><button class="jb" id="jm-m" aria-label="fewer masons">−</button><button class="jb" id="jp-m" aria-label="more masons">+</button></div>
       <div class="job ghost" id="job-p"><span class="jname">priest</span><span class="jn" id="jn-p">0</span><button class="jb" id="jm-p" aria-label="fewer priests">−</button><button class="jb" id="jp-p" aria-label="more priests">+</button></div>
+      <div class="job ghost" id="job-c"><span class="jname">cultivator</span><span class="jn" id="jn-c">0</span><button class="jb" id="jm-c" aria-label="fewer cultivators">−</button><button class="jb" id="jp-c" aria-label="more cultivators">+</button></div>
     </section>
     <section id="sec-bld" class="hidden">
       <h2 id="h-bld">works</h2>
@@ -151,6 +152,7 @@ const JOBS = [
   { id:"w", name:"woodcutter", base:0.35, out:"wood",  show:s=>s.pop>0 },
   { id:"m", name:"mason",      base:0.25, out:"stone", show:s=>s.bld.quarry>0 },
   { id:"p", name:"priest",     base:0.2,  out:"favor", eats:2, show:s=>s.turn1 },
+  { id:"c", name:"cultivator", base:0,    out:null,    eff:{arrive:0.85}, show:s=>s.mir.goodyear },
 ];
 
 /* max = field anchors: the ledger may never outgrow the picture */
@@ -159,6 +161,7 @@ const BLD = [
   { id:"farm",   name:"farm",   flavor:"rows in the dirt.",             cost:{wood:25}, rate:1.18, max:3, eff:{job:"f", per:0.25},   show:s=>s.pop>=2,       sprite:"farm" },
   { id:"quarry", name:"quarry", flavor:"the hill opens.",               cost:{wood:60}, rate:1.18, max:1, eff:{job:"m", per:0.25},   show:s=>s.bld.farm>=1,  sprite:"adit" },
   { id:"sawpit", name:"sawpit", flavor:"the logs come apart.",          cost:{wood:50,stone:15}, rate:1.18, max:1, eff:{job:"w", per:0.25}, show:s=>s.bld.quarry>=1, sprite:"sawpit" },
+  { id:"granary",name:"granary",flavor:"the winter gets smaller.",      cost:{wood:80,stone:40}, rate:1.18, max:1, eff:{offline:8},           show:s=>s.turn1,        sprite:"granary" },
 ];
 
 const PROJ = [
@@ -166,12 +169,14 @@ const PROJ = [
   { id:"tools",   name:"stone tools",        flavor:"flint edges.",                cost:{wood:30,stone:10},  done:"made", show:s=>s.totalStone>=3, eff:{allJobs:1.5} },
   { id:"rats",    name:"rats in the stores", flavor:s=>nameAt(s.ratsIdx)+" sits up with a stick.", cost:{wood:60}, done:"kept", show:s=>s.totalFood>=120 },
   { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:90,wood:60}, done:"open", show:s=>s.totalStone>=70 },
+  { id:"temple",  name:"the temple",         flavor:"the hollow learns its name.", cost:{stone:120,wood:80,favor:150}, done:"raised", eff:{out:"favor",x:2}, show:s=>faithOf(s)>=4 },
   { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:null, show:s=>s.mir.obedience },
 ];
 
 const MIR = [
   { id:"goodyear",  name:"a good year", flavor:"the rain falls when asked.", cost:{favor:60},  done:"granted", eff:{arrive:0.5},       show:s=>s.turn1 },
   { id:"obedience", name:"obedience",   flavor:"no one wonders anymore.",    cost:{favor:150}, done:"granted", eff:{out:"favor", x:2}, show:s=>s.mir.goodyear },
+  { id:"quickening",name:"the quickening", flavor:"the cradles are never empty.", cost:{favor:350}, done:"granted", eff:{arrive:0.5, cd:0.5}, show:s=>s.mir.obedience && faithOf(s)>=5 },
 ];
 
 const LEX = [
@@ -221,10 +226,11 @@ const ANCHORS = {
   sawpit: { col:17, row:9.4 },
   adit:   { col:75, row:8.2 },
   hollow: { col:84, row:6.4 },
+  granary:{ col:62, row:9.2 },  /* the meadow's last open run — act 3 builds nothing */
 };
 const SITES = {  /* where each job walks to */
   f:{col:29,row:10.8}, w:{col:13,row:10}, m:{col:77,row:8.8},
-  p:{col:84.5,row:7.4}, i:{col:49.5,row:10.2},
+  p:{col:84.5,row:7.4}, c:{col:27,row:10.6}, i:{col:49.5,row:10.2},
 };
 
 /* ============================== state ============================== */
@@ -234,8 +240,8 @@ function fresh() {
     v:SAVE_VER, seed:(Math.random()*2147483647)|0, last:Date.now(),
     food:0, wood:0, stone:0, favor:0,
     totalFood:0, totalWood:0, totalStone:0, totalFavor:0,
-    pop:0, jobs:{f:0,w:0,m:0,p:0},
-    bld:{hut:0,farm:0,quarry:0,sawpit:0},
+    pop:0, jobs:{f:0,w:0,m:0,p:0,c:0},
+    bld:{hut:0,farm:0,quarry:0,sawpit:0,granary:0},
     proj:{}, mir:{},
     offerings:0, nameIdx:0, surgeLeft:0, arriveCd:0, ratsIdx:-1, turn1:false, glowLock:0,
     starveT:0, clicks:0, walkPhase:0, smokePhase:0,
@@ -256,9 +262,9 @@ function migrate(raw) {
   for (const b of BLD) if (b.max && s.bld[b.id] > b.max) s.bld[b.id] = b.max;
   const popCap = s.bld.hut * CAP_HUT;
   if (s.pop > popCap) s.pop = popCap;
-  while (s.jobs.f + s.jobs.w + s.jobs.m + s.jobs.p > s.pop) {
+  while (s.jobs.f + s.jobs.w + s.jobs.m + s.jobs.p + s.jobs.c > s.pop) {
     let big = "f";
-    for (const k of ["f","w","m","p"]) if (s.jobs[k] > s.jobs[big]) big = k;
+    for (const k of ["f","w","m","p","c"]) if (s.jobs[k] > s.jobs[big]) big = k;
     if (s.jobs[big] > 0) s.jobs[big]--; else break;
   }
   /* v1 -> v2: the surge was a wall-clock stamp; now it is seconds, paid in dt */
@@ -323,14 +329,15 @@ const fmtRate = n => {
 const surgeMult = () => S.surgeLeft > 0 ? SURGE.x : 1;
 const mirMult = out => MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.out===out ? u.eff.x : 1), 1);
 const projAllJobs = () => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff.allJobs ? p.eff.allJobs : 1), 1);
+const projOutMult = out => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff.out===out ? p.eff.x : 1), 1);
 const bldJobMult = j => BLD.reduce((m,b)=> m * (b.eff && b.eff.job===j ? 1 + b.eff.per*(S.bld[b.id]||0) : 1), 1);
 
 const jobRate = (j, surge) => {
   const def = JOBS.find(x=>x.id===j);
   /* the gift feeds the fields, never the shrine: favor takes no surge, no flint */
-  if (def.out === "favor") return S.jobs[j] * def.base * bldJobMult(j) * mirMult(def.out);
+  if (def.out === "favor") return S.jobs[j] * def.base * bldJobMult(j) * mirMult(def.out) * projOutMult(def.out);
   const sm = surge === undefined ? surgeMult() : (surge ? SURGE.x : 1);
-  return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * sm;
+  return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * projOutMult(def.out) * sm;
 };
 const prodOf = (cur, surge) => JOBS.reduce((t,jd)=> t + (jd.out===cur ? jobRate(jd.id, surge) : 0), 0);
 const upkeep = () => (S.pop + S.jobs.p * ((JOBS.find(j=>j.id==="p").eats||1) - 1)) * UPKEEP;
@@ -339,11 +346,13 @@ const rateOf = cur => prodOf(cur) - (cur==="food" ? upkeep() + ratsDrain() : 0);
 const totalProd = () => prodOf("food") + prodOf("wood") + prodOf("stone");
 
 const cap = () => S.bld.hut * CAP_HUT;
-const idle = () => S.pop - S.jobs.f - S.jobs.w - S.jobs.m - S.jobs.p;
+const idle = () => S.pop - S.jobs.f - S.jobs.w - S.jobs.m - S.jobs.p - S.jobs.c;
 const mirArrive = () => MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.arrive ? u.eff.arrive : 1), 1);
-const arriveAt = () => ARRIVE.base * Math.pow(ARRIVE.rate, S.pop) * mirArrive();
+const jobArrive = () => JOBS.reduce((m,j)=> m * (j.eff && j.eff.arrive ? Math.pow(j.eff.arrive, S.jobs[j.id]) : 1), 1);
+const arriveAt = () => ARRIVE.base * Math.pow(ARRIVE.rate, S.pop) * mirArrive() * jobArrive();
+const arriveCdS = () => ARRIVE_CD * MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.cd ? u.eff.cd : 1), 1);
 const offerYield = () => OFFER.base * Math.pow(OFFER.rate, S.offerings);
-const capS = () => OFFLINE_CAP_S;
+const capS = () => S.bld.granary > 0 ? 8 * OFFLINE_CAP_S : OFFLINE_CAP_S;
 const clickPower = () => S.proj.tools ? 2 : 1;  /* flint fits the hand; the hand still loses to the village */
 
 /* the spine: faith is derived, never stored — the flock's regard, measured in what it has already given */
@@ -420,7 +429,7 @@ function tri01(t) { t = ((t % 1) + 1) % 1; return t < 0.5 ? t * 2 : 2 - t * 2; }
 function assignFigures() {
   /* deterministic: figure k's job from the allocation, walk from (k, phase) */
   const list = [];
-  const order = ["f","w","m","p"];
+  const order = ["f","w","m","p","c"];
   for (const j of order) for (let i = 0; i < S.jobs[j]; i++) list.push(j);
   const idl = idle();
   for (let i = 0; i < idl; i++) list.push("i");
@@ -435,10 +444,12 @@ function villageScene() {
     builds.push({ sprite:"farm", col:ANCHORS.farms[i].col, row:ANCHORS.farms[i].row });
   if (S.bld.quarry > 0) builds.push({ sprite:"adit", col:ANCHORS.adit.col, row:ANCHORS.adit.row });
   if (S.bld.sawpit > 0) builds.push({ sprite:"sawpit", col:ANCHORS.sawpit.col, row:ANCHORS.sawpit.row });
+  if (S.bld.granary > 0) builds.push({ sprite:"granary", col:ANCHORS.granary.col, row:ANCHORS.granary.row });
   if (S.proj.fire) builds.push({ sprite:"fire", col:ANCHORS.fire.col, row:ANCHORS.fire.row });
   const hollow = !S.proj.shrineX && (S.seen["p:shrineX"] || S.totalStone >= 70);
   if (hollow) builds.push({ sprite:"hollow", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
-  if (S.proj.shrineX) builds.push({ sprite:"shrine", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
+  /* the shrine grows in place: one anchor, three lives — hollow, shrine, temple */
+  if (S.proj.shrineX) builds.push({ sprite:S.proj.temple ? "temple" : "shrine", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
 
   const flecks = [];
   const n = Math.min(S.offerings, FIELDG.flecks.length);
@@ -475,7 +486,7 @@ function villageScene() {
   /* a pending arrival is seen on the road: the walk in from the treeline IS the wait */
   let walker = null;
   if (S.proj.fire && S.pop < cap() && S.arriveCd > 0 && S.food >= arriveAt()) {
-    const u = 1 - S.arriveCd / ARRIVE_CD;
+    const u = Math.max(0, 1 - S.arriveCd / arriveCdS());
     walker = { col: 6 + (ANCHORS.fire.col - 8 - 6) * u, row: 10.4 };
   }
 
@@ -623,6 +634,15 @@ function drawSprite(b, X, Y, buildC) {
     ctx.fillRect(x - 3, y - 13, 6, 16);
     ctx.fillRect(x - 8, y - 10, 16, 3);
     if (S.totalFavor > 0) { ctx.fillStyle = PAL.fleck; ctx.fillRect(x - 2, y - 12.5, 4, 2.5); }
+  } else if (b.sprite === "temple") {
+    ctx.fillRect(x - 4, y - 18, 8, 21);
+    ctx.fillRect(x - 11, y - 14, 22, 3);
+    ctx.fillRect(x - 7, y - 4, 14, 2);
+    if (S.totalFavor > 0) { ctx.fillStyle = PAL.fleck; ctx.fillRect(x - 2.5, y - 17, 5, 3); }
+  } else if (b.sprite === "granary") {
+    ctx.fillRect(x - 5, y - 6, 10, 7);
+    ctx.fillRect(x - 6.5, y - 8, 13, 2.5);
+    ctx.fillStyle = PAL.hollow; ctx.fillRect(x - 4, y + 1, 2, 2); ctx.fillRect(x + 2, y + 1, 2, 2);
   }
 }
 
@@ -664,8 +684,8 @@ function makeRow(def, kind) {
 /* ============================== purchases ============================== */
 
 function fixJobs() {
-  const order = ["f","w","m","p"];
-  while (S.jobs.f + S.jobs.w + S.jobs.m + S.jobs.p > S.pop) {
+  const order = ["f","w","m","p","c"];
+  while (S.jobs.f + S.jobs.w + S.jobs.m + S.jobs.p + S.jobs.c > S.pop) {
     let big = order[0];
     for (const j of order) if (S.jobs[j] > S.jobs[big]) big = j;
     if (S.jobs[big] > 0) S.jobs[big]--; else break;
@@ -701,7 +721,7 @@ function doOffering() {
   grantFavor(offerYield());
   S.offerings++; S.nameIdx++;
   S.surgeLeft = SURGE.s;
-  S.arriveCd = Math.max(S.arriveCd, ARRIVE_CD);   /* the gap must be seen before it closes */
+  S.arriveCd = Math.max(S.arriveCd, arriveCdS());   /* the gap must be seen before it closes */
   render(); save();
 }
 
@@ -784,6 +804,7 @@ function effLine(def) {
   if (e.allJobs) return "hands ×" + trim(e.allJobs);
   if (e.out)     return e.out + " ×" + e.x;
   if (e.arrive)  return "arrivals ×" + trim(1 / e.arrive);
+  if (e.offline) return "away · " + e.offline + " h";
   return "";
 }
 
@@ -962,7 +983,7 @@ window.__tithe = {
   buyBld, buyProj, buyMir, doOffering, fixJobs,
   faithOf, favorCap, grantFavor, jobCapOf,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
-  bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, effLine,
+  bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, jobArrive, arriveCdS, projOutMult, effLine,
   smokeRate, glowT, redT, nextName, nameAt,
   genVillage, villageScene, fmt, fmtStore, fmtRate, mulberry32,
 };
