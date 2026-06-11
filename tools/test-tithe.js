@@ -326,7 +326,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const G3 = boot(st2).window.__tithe;
   ok(G3.state.offerings === 0 && G3.state.turn1 === false && typeof G3.state.mir === "object",
     "a stripped save walks in with defaults");
-  ok(G3.state.v === 4, "version restamped");
+  ok(G3.state.v === 5, "version restamped");
 }
 {
   const st3 = { "tithe-save": "{broken" };
@@ -369,7 +369,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const stV = { "tithe-save": JSON.stringify(sv) };
   const GV = boot(stV).window.__tithe;
   ok(near(GV.state.surgeLeft, 30, 1.5), "a v1 stamp converts to seconds owed");
-  ok(GV.state.v === 4, "and leaves restamped");
+  ok(GV.state.v === 5, "and leaves restamped");
 }
 
 /* ---------- rats in the granary ---------- */
@@ -427,7 +427,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(GB.state.pop === 10, "the flock fits the huts");
   const JB = GB.state.jobs;
   ok(JB.f + JB.w + JB.m + JB.p <= GB.state.pop, "the jobs table follows the head count");
-  ok(GB.state.v === 4, "restamped v4");
+  ok(GB.state.v === 5, "restamped v5");
 }
 
 /* ---------- the spine: faith is born at the turn ---------- */
@@ -514,7 +514,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const GM = boot(stM).window.__tithe;
   ok(GM.state.favor === 400, "favor folds back under the cap (faith 2)");
   ok(GM.state.jobs.p === 2, "the priests fit the faith");
-  ok(GM.state.v === 4 && GM.state.universes === 1, "restamped v4; one universe, as always");
+  ok(GM.state.v === 5 && GM.state.universes === 1, "restamped v5; one universe, as always");
 }
 
 /* ---------- the cultivator: arrivals, not the larder ---------- */
@@ -755,6 +755,127 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(!!tBtn && tBtn.disabled, "a stash without a ledger buys nothing");
   GE.buyProj(GE.PROJ.find(p => p.id === "temple"));
   ok(!SE.proj.temple, "the tithe was wood and stone's last bill");
+}
+
+/* ---------- doubt, the sign, the aside ---------- */
+
+{
+  const stH = {};
+  const wH = boot(stH, true).window, dH = wH.document, GH = wH.__tithe, SH = GH.state;
+  /* a settled post-molt village: hut 4 (cap 8), pop 8, faith 6, slider at rest */
+  SH.proj.fire = true; SH.proj.tools = true; SH.proj.rats = true; SH.proj.shrineX = true;
+  SH.proj.temple = true; SH.proj.tithe = true;
+  SH.mir.goodyear = true; SH.mir.obedience = true;
+  SH.bld.hut = 4; SH.bld.farm = 3; SH.bld.quarry = 1; SH.bld.sawpit = 1; SH.bld.granary = 1;
+  SH.pop = 8; SH.turn1 = true; SH.offerings = 7; SH.nameIdx = 8; SH.totalFavor = 405;
+  SH.totalFood = 130; SH.totalWood = 100; SH.totalStone = 100;
+  SH.favor = 600; SH.food = 200;
+  const tk = () => { SH.last = Date.now() - 1; GH.tick(); };
+  tk();
+
+  ok(SH.doubt === 0 && !SH.aside && !dH.getElementById("mir-sign"),
+    "doubt waits for the first rung");
+
+  dH.getElementById("offer").click();
+  ok(SH.doubt === 1 && SH.deeper === 1, "the first rung breeds the first doubt");
+  tk();
+  const signBtn = dH.getElementById("mir-sign");
+  ok(!!signBtn, "a sign appears when the first one turns away");
+  ok(signBtn.querySelector(".co").textContent === "220 favor", "and names its price");
+
+  /* the field: parked at the treeline, facing away, never walking */
+  const dbt = GH.villageScene().figures.filter(f => f.job === "d");
+  ok(dbt.length === 1, "one stands at the treeline");
+  ok(near(dbt[0].col, 10, 0.01) && near(dbt[0].row, 10.2, 0.01) && dbt[0].away === true,
+    "parked at the trees, facing away");
+  SH.walkPhase += 7;
+  const dbt2 = GH.villageScene().figures.filter(f => f.job === "d")[0];
+  ok(dbt2.col === dbt[0].col && dbt2.row === dbt[0].row, "and never walks, motion or not");
+
+  /* below half the stock, doubt is only a tax */
+  ok(SH.jobs.f === 2 && SH.jobs.p === 3 && GH.deriveJobs().d === 1,
+    "a doubter neither works nor worships");
+  ok(GH.prodOf("favor") > 0, "below half the stock, doubt is only a tax");
+
+  /* the threshold, exactly: pop 7 turns at four; pop 8 turns at four too */
+  SH.doubt = 3; GH.applyTithe();
+  ok(!GH.stalled() && GH.prodOf("favor") > 0, "three of seven: the tithe still flows");
+  SH.doubt = 4; GH.applyTithe(); GH.render();
+  ok(GH.stalled() && GH.prodOf("favor") === 0 && GH.congRate() === 0,
+    "four of seven crosses half the stock: the tithe halts entirely");
+  ok(dH.getElementById("favorRate").textContent === "+0.00/s",
+    "the readout reads zero, not nothing");
+  SH.pop = 8; SH.doubt = 4; GH.applyTithe();
+  ok(GH.stalled(), "four of eight: half exactly is the threshold");
+  SH.doubt = 3; GH.applyTithe();
+  ok(!GH.stalled(), "three of eight is only a tax");
+
+  /* heresy compounds: one more every ninety seconds, while any remain */
+  SH.doubtT = 0;
+  const fav0 = SH.favor, rate0 = GH.prodOf("favor");
+  SH.last = Date.now() - 90 * 1000; GH.tick();
+  ok(SH.doubt === 4, "ninety seconds of doubt: one more");
+  ok(near(SH.favor, fav0 + rate0 * 90, 0.5), "favor flowed right up to the stall");
+  const fav1 = SH.favor;
+  SH.last = Date.now() - 90 * 1000; GH.tick();
+  ok(SH.doubt === 5 && near(SH.favor, fav1, 0.01), "stalled: another doubt, not another favor");
+  const dd = GH.villageScene().figures.filter(f => f.job === "d");
+  ok(dd.length === 5 && new Set(dd.map(f => f.row.toFixed(2))).size === 5,
+    "five at the trees, each in their own place");
+
+  /* the crossing is exact even across one long tick */
+  SH.doubt = 1; SH.doubtT = 0; SH.favor = 100; GH.applyTithe();
+  const fav2 = SH.favor, rate2 = GH.prodOf("favor");
+  SH.last = Date.now() - 400 * 1000; GH.tick();
+  ok(SH.doubt === 5 && near(SH.favor, fav2 + rate2 * 270, 1),
+    "favor flows only until the stall lands, even across one long tick");
+
+  /* a sign: bought mid-stall, cures all of it, costs half again next time */
+  GH.render();
+  ok(!signBtn.disabled, "the sign can be bought mid-stall");
+  const favB = SH.favor;
+  signBtn.click();
+  ok(SH.doubt === 0 && SH.doubtT === 0 && SH.signs === 1, "they remember why they kneel");
+  ok(near(SH.favor, favB - 220, 0.01), "two hundred twenty, paid in favor");
+  ok(GH.prodOf("favor") > 0, "and the tithe resumes");
+  ok(signBtn.querySelector(".co").textContent === "330 favor", "the next sign costs half again");
+  ok(signBtn.parentElement.querySelector(".tease").textContent === "", "the tease spends itself");
+  SH.favor = 500; GH.render();
+  signBtn.click();
+  ok(SH.signs === 2 && signBtn.querySelector(".co").textContent === "495 favor", "and half again");
+
+  /* the one aside: fired by the crossing, sixty seconds, never again */
+  tk();
+  ok(!SH.aside && dH.getElementById("shrineTease").textContent === "",
+    "no aside while the fields outweigh the shrine");
+  dH.getElementById("slider").value = "88";
+  dH.getElementById("slider").dispatchEvent(new wH.Event("input"));
+  tk();
+  ok(SH.aside === true && SH.asideLeft > 59,
+    "the shrine outweighs the fields: the aside arrives");
+  ok(dH.getElementById("shrineTease").textContent === "they do not count themselves.",
+    "and says the only thing it ever says");
+  SH.last = Date.now() - 30 * 1000; GH.tick();
+  ok(dH.getElementById("shrineTease").textContent === GH.ASIDE.text, "half a minute in, still speaking");
+  SH.last = Date.now() - 31 * 1000; GH.tick();
+  ok(SH.asideLeft === 0 && dH.getElementById("shrineTease").textContent === "", "sixty seconds, no more");
+  SH.last = Date.now() - 5 * 1000; GH.tick();
+  ok(SH.aside === true && dH.getElementById("shrineTease").textContent === "",
+    "the condition holds; the aside does not return");
+
+  /* reload: the signs, the spent aside, the row at zero doubt */
+  wH.dispatchEvent(new wH.Event("beforeunload"));
+  const wH2 = boot(stH).window, dH2 = wH2.document, GH2 = wH2.__tithe;
+  ok(GH2.state.signs === 2 && GH2.state.aside === true, "reload: the signs and the aside are remembered");
+  ok(!!dH2.getElementById("mir-sign"), "reload: the sign keeps its row at zero doubt");
+  ok(dH2.getElementById("mir-sign").querySelector(".co").textContent === "495 favor",
+    "reload: the ladder holds its rung");
+  ok(dH2.getElementById("shrineTease").textContent === "", "reload: the aside stays spent");
+
+  /* an old save learns the new fields */
+  const mg = GH.migrate({ v:4, turn1:true, pop:4, bld:{hut:2}, deeper:2 });
+  ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === 5,
+    "an old save learns the new fields at their defaults");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */

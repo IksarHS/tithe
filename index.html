@@ -141,7 +141,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 /* ============================== content ============================== */
 
 const SAVE_KEY = "tithe-save";
-const SAVE_VER = 4;
+const SAVE_VER = 5;
 
 const CURS = ["food","wood","stone","favor"];
 const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"totalFavor" };
@@ -181,7 +181,11 @@ const MIR = [
   { id:"goodyear",  name:"a good year", flavor:"the rain falls when asked.", cost:{favor:60},  done:"granted", eff:{arrive:0.5},       show:s=>s.turn1 },
   { id:"obedience", name:"obedience",   flavor:"no one wonders anymore.",    cost:{favor:150}, done:"granted", eff:{out:"favor", x:2}, show:s=>s.mir.goodyear },
   { id:"quickening",name:"the quickening", flavor:"the cradles are never empty.", cost:{favor:350}, done:"granted", eff:{arrive:0.5, cd:0.5}, show:s=>s.mir.obedience && faithOf(s)>=5 },
+  { id:"sign",      name:"a sign",       flavor:"they remember why they kneel.", cost:{favor:220}, rate:1.5, repeat:true, show:s=>s.doubt>0 },
 ];
+
+/* the one unprompted aside in the whole game: once, for sixty seconds, never again */
+const ASIDE = { text:"they do not count themselves.", s:60 };
 
 const LEX = [
   { id:"h-shrine",    pre:"the hollow",     post:"the shrine" },
@@ -218,6 +222,7 @@ const FAITH_GATES = [25,65,130,235,405,680,1125,1850]; // cumulative favor; each
 const FAITH_MAX = 13;                  // 1 at the turn + 8 gates + 4 deeper offerings
 const FAVOR_CAP_PER = 200;             // favor cap = 200 x faith — the cap is itself a forecast
 const LEGEND_RATE = 0.3;               // /s, only while favor rests at its cap
+const DOUBT_S  = 90;                   // seconds between doubts, while any remain — heresy compounds
 const CAP_HUT  = 2;
 const OFFLINE_CAP_S = 3600;
 const FIG_MAX  = 24;
@@ -235,6 +240,7 @@ const ANCHORS = {
 const SITES = {  /* where each job walks to */
   f:{col:29,row:10.8}, w:{col:13,row:10}, m:{col:77,row:8.8},
   p:{col:84.5,row:7.4}, c:{col:27,row:10.6}, g:{col:83.2,row:8.2}, i:{col:49.5,row:10.2},
+  d:{col:10,row:10.2},  /* the treeline edge: where doubt stands, facing away */
 };
 
 /* ============================== state ============================== */
@@ -249,7 +255,7 @@ function fresh() {
     proj:{}, mir:{},
     offerings:0, nameIdx:0, surgeLeft:0, arriveCd:0, ratsIdx:-1, turn1:false, glowLock:0,
     starveT:0, clicks:0, walkPhase:0, smokePhase:0,
-    legend:0, deeper:0, doubt:0, doubtT:0, slider:0.5,
+    legend:0, deeper:0, doubt:0, doubtT:0, signs:0, slider:0.5, aside:false, asideLeft:0,
     heralds:0, worlds:0, souls:0, galaxy:0, vigil:false, universes:1, endState:0,
     seen:{},
   };
@@ -279,6 +285,7 @@ function migrate(raw) {
   const fa = faithOf(s);
   if (s.turn1 && s.favor > FAVOR_CAP_PER * fa) s.favor = FAVOR_CAP_PER * fa;
   if (s.jobs.p > fa) s.jobs.p = fa;
+  /* v4 -> v5: the doubt era (signs, the aside) — new fields arrive with their defaults */
   s.v = SAVE_VER;
   return s;
 }
@@ -339,7 +346,8 @@ const bldJobMult = j => BLD.reduce((m,b)=> m * (b.eff && b.eff.job===j ? 1 + b.e
 const jobRate = (j, surge) => {
   const def = JOBS.find(x=>x.id===j);
   /* the gift feeds the fields, never the shrine: favor takes no surge, no flint */
-  if (def.out === "favor") return S.jobs[j] * def.base * bldJobMult(j) * mirMult(def.out) * projOutMult(def.out);
+  if (def.out === "favor") return stalled() ? 0
+    : S.jobs[j] * def.base * bldJobMult(j) * mirMult(def.out) * projOutMult(def.out);
   const sm = surge === undefined ? surgeMult() : (surge ? SURGE.x : 1);
   return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * projOutMult(def.out) * sm;
 };
@@ -379,20 +387,26 @@ function grantFavor(y) {
 }
 const jobCapOf = j => j === "p" ? faithOf() : Infinity;
 
+/* law 15 — a threshold, not a gradient: below half the stock, doubt is only a tax */
+const stalled = () => S.proj.tithe && S.doubt > 0 && S.doubt * 2 >= S.pop;
+/* the sign's ladder: half again, each time (the only repeatable miracle) */
+const mirCost = def => def.repeat ? { favor: Math.ceil(def.cost.favor * Math.pow(def.rate, S.signs)) } : def.cost;
+
 /* molt 2: one slider decides, the rows report. fields hands feed first;
    whoever the larder spares tends the cradles; the shrine takes the rest,
    priests to the faith cap, the remainder a congregation at half a voice */
 function deriveJobs() {
-  const stock = S.pop;
+  const away = Math.min(S.doubt, S.pop);   /* doubters: present, fed, facing away */
+  const stock = S.pop - away;
   const u = Math.max(0, Math.min(1, S.slider));
   const fields = Math.round((1 - u) * stock);
   const shrine = stock - fields;
   const p = Math.min(shrine, faithOf());
   const fd = JOBS.find(j => j.id === "f");
   const per = fd.base * bldJobMult("f") * projAllJobs() * mirMult("food") * projOutMult("food");
-  const need = per > 0 ? Math.ceil((stock + p) * UPKEEP / per) : fields;
+  const need = per > 0 ? Math.ceil((S.pop + p) * UPKEEP / per) : fields;
   const f = Math.min(fields, need);
-  return { f, w:0, m:0, p, c:fields - f, cong:shrine - p };
+  return { f, w:0, m:0, p, c:fields - f, cong:shrine - p, d:away };
 }
 function applyTithe() {
   if (!S.proj.tithe) return;
@@ -400,7 +414,7 @@ function applyTithe() {
   S.jobs.f = d.f; S.jobs.w = d.w; S.jobs.m = d.m; S.jobs.p = d.p; S.jobs.c = d.c;
 }
 function congRate() {
-  if (!S.proj.tithe) return 0;
+  if (!S.proj.tithe || stalled()) return 0;
   const pd = JOBS.find(j => j.id === "p");
   return deriveJobs().cong * pd.base * 0.5 * bldJobMult("p") * mirMult("favor") * projOutMult("favor");
 }
@@ -462,8 +476,14 @@ function assignFigures() {
   const list = [];
   const order = ["f","w","m","p","c"];
   for (const j of order) for (let i = 0; i < S.jobs[j]; i++) list.push(j);
-  const idl = idle();
-  for (let i = 0; i < idl; i++) list.push(S.proj.tithe ? "g" : "i");  /* after the molt no one is idle: the rest kneel */
+  if (S.proj.tithe) {
+    const dv = deriveJobs();  /* after the molt no one is idle: the rest kneel... */
+    for (let i = 0; i < dv.cong; i++) list.push("g");
+    for (let i = 0; i < dv.d; i++) list.push("d");  /* ...except the ones at the trees */
+  } else {
+    const idl = idle();
+    for (let i = 0; i < idl; i++) list.push("i");
+  }
   return list.slice(0, FIG_MAX);
 }
 
@@ -492,8 +512,17 @@ function villageScene() {
   const figures = [];
   const roster = assignFigures();
   const hutN = Math.max(1, Math.min(S.bld.hut, ANCHORS.huts.length));
+  let dn = 0;  /* doubters file along the treeline in their own order */
   for (let k = 0; k < roster.length; k++) {
     const j = roster[k];
+    if (j === "d") {
+      /* parked, facing away — never walks; reduced motion is identical by construction */
+      figures.push({ job:"d", away:true,
+        col: SITES.d.col + Math.floor(dn / 6) * 0.9,
+        row: SITES.d.row + (dn % 6) * 0.28 });
+      dn++;
+      continue;
+    }
     const home = ANCHORS.huts[k % hutN] || ANCHORS.fire;
     const site = SITES[j];
     const jit = ((k * 1.7) % 4) - 2;
@@ -619,7 +648,7 @@ function paint() {
     ctx.fillStyle = f.job === "p" ? PAL.figP : PAL.fig;
     const fx = X(f.col), fy = Y(f.row);
     ctx.fillRect(fx - 1, fy - 8, 3, 8);
-    ctx.fillRect(fx - 1.5, fy - 11, 4, 3);
+    ctx.fillRect(fx - (f.away ? 2.5 : 1.5), fy - 11, 4, 3);  /* a doubter's head turns to the trees */
   }
 
   /* one on the road, walking in */
@@ -740,8 +769,16 @@ function buyProj(def) {
   render(); save();
 }
 function buyMir(def) {
-  if (S.mir[def.id] || !canAfford(def.cost)) return;
-  pay(def.cost); S.mir[def.id] = true;
+  const c = mirCost(def);
+  if (def.repeat) {
+    if (!canAfford(c)) return;
+    pay(c); S.signs++;
+    S.doubt = 0; S.doubtT = 0;  /* they remember why they kneel */
+    applyTithe(); render(); save();
+    return;
+  }
+  if (S.mir[def.id] || !canAfford(c)) return;
+  pay(c); S.mir[def.id] = true;
   render(); save();
 }
 
@@ -752,6 +789,7 @@ function doOffering() {
     const n = Math.pow(2, S.deeper);
     S.pop -= n;
     S.deeper++;
+    S.doubt++;          /* each rung breeds one (law 15) */
     S.offerings += n;   /* the picture remembers each of them */
     S.nameIdx += n;     /* the names are kept, never shown — the order matters later */
     S.arriveCd = Math.max(S.arriveCd, arriveCdS());
@@ -876,7 +914,9 @@ function render() {
   /* molt 2: wood and stone leave the ledger; the slots keep their shape */
   els["row-wood"].classList.toggle("ghost", !!S.proj.tithe);
   els["row-stone"].classList.toggle("ghost", !!S.proj.tithe);
-  setText(els["favorRate"], prodOf("favor") > 0 && S.favor < favorCap() ? fmtRate(rateOf("favor")) : "");
+  /* the stall is a readout, not an absence: the rate reads zero until cured */
+  setText(els["favorRate"], stalled() ? fmtRate(0)
+    : prodOf("favor") > 0 && S.favor < favorCap() ? fmtRate(rateOf("favor")) : "");
   setText(els["legendVal"], fmtStore(S.legend));
   setText(els["legendRate"], S.turn1 && S.favor >= favorCap() ? fmtRate(LEGEND_RATE) : "");
   setText(els["faithLine"], S.turn1 ? "faith " + faithOf() : "");
@@ -916,10 +956,12 @@ function render() {
       const done = r.kind === "proj" ? S.proj[def.id] : S.mir[def.id];
       /* wood and stone died at molt 2: anything still priced in them is stranded */
       const dead = r.kind === "proj" && S.proj.tithe && !done && def.cost && !!(def.cost.wood || def.cost.stone);
+      const c = r.kind === "mir" ? mirCost(def) : def.cost;
       setText(r.ct, "");
-      setText(r.co, done ? (def.done || "done") : costText(def.cost));
-      r.btn.disabled = done || !def.cost || dead || !canAfford(def.cost);
+      setText(r.co, done ? (def.done || "done") : costText(c));
+      r.btn.disabled = done || !def.cost || dead || !canAfford(c);
       if (done) setText(r.tease, effLine(def));
+      if (def.repeat && S.signs > 0) setText(r.tease, "");  /* the tease spends itself on the first sign */
       /* the early works fold into one line */
       if (r.kind === "proj" && def.act === 1) r.wrap.classList.toggle("hidden", !!S.proj.tithe);
     }
@@ -930,7 +972,7 @@ function render() {
       /* the button transmutes in place: a number where the name was */
       setText(els["offer"], "a deeper offering — " + Math.pow(2, Math.min(S.deeper, 3)));
       els["offer"].disabled = S.deeper >= 4 || S.pop < cap();
-      setText(els["shrineTease"], "");
+      setText(els["shrineTease"], S.asideLeft > 0 ? ASIDE.text : "");
       setText(els["surgeLine"], "");
       els["surgeLine"].classList.add("hidden");  /* the surge line retires; faith takes its slot */
     } else {
@@ -972,15 +1014,33 @@ function tick() {
     S.smokePhase += dt * smokeRate() * 0.4;
   }
 
+  /* law 15: favor flows only until the stall lands, even across one long tick */
+  let favDt = dt;
+  if (stalled()) favDt = 0;
+  else if (S.proj.tithe && S.doubt > 0) {
+    const k = Math.ceil(S.pop / 2 - S.doubt);  /* doubts still to come before half the stock */
+    favDt = Math.min(dt, Math.max(0, k * DOUBT_S - S.doubtT));
+  }
+
   /* the surge pays exactly its seconds, even across one long tick */
   const sDt = Math.min(dt, Math.max(0, S.surgeLeft));
   for (const cur of CURS) {
-    const gain = (sDt > 0 ? prodOf(cur, true) * sDt : 0) + prodOf(cur, false) * (dt - sDt);
+    const gain = cur === "favor" ? prodOf(cur, false) * favDt
+      : (sDt > 0 ? prodOf(cur, true) * sDt : 0) + prodOf(cur, false) * (dt - sDt);
     if (gain > 0) {
       if (cur === "favor") grantFavor(gain);
       else { S[cur] += gain; S[TOT[cur]] += gain; }
     }
   }
+  /* heresy compounds: while any doubt remains, one more every ninety seconds */
+  if (S.doubt > 0) {
+    S.doubtT += dt;
+    while (S.doubtT >= DOUBT_S) { S.doubtT -= DOUBT_S; S.doubt++; }
+    applyTithe();
+  } else S.doubtT = 0;
+  /* the one aside the game ever volunteers (law 17) */
+  if (!S.aside && S.proj.tithe && prodOf("favor") > prodOf("food")) { S.aside = true; S.asideLeft = ASIDE.s; }
+  if (S.asideLeft > 0) S.asideLeft = Math.max(0, S.asideLeft - dt);
   /* legend: the god must sit still to be storied */
   if (S.turn1 && S.favor >= favorCap()) S.legend += LEGEND_RATE * dt;
   S.surgeLeft = Math.max(0, S.surgeLeft - dt);
@@ -1061,9 +1121,9 @@ window.__tithe = {
   tick, render, save, migrate, fresh,
   JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, ANCHORS, SITES, PAL,
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
-  FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE,
+  FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE, DOUBT_S, ASIDE,
   buyBld, buyProj, buyMir, doOffering, fixJobs,
-  faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate,
+  faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate, stalled, mirCost,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
   bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, jobArrive, arriveCdS, projOutMult, effLine,
   smokeRate, glowT, redT, nextName, nameAt,
