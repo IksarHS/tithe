@@ -5,7 +5,7 @@ const fs = require("fs");
 const html = fs.readFileSync(require("path").join(__dirname, "..", "index.html"), "utf8");
 
 const vc = new VirtualConsole();
-vc.on("jsdomError", e => { if (!/canvas/i.test(String(e && e.message))) console.error(e); });
+vc.on("jsdomError", e => { if (!/canvas|navigation/i.test(String(e && e.message))) console.error(e); });
 ["error","warn","log","info"].forEach(k => vc.on(k, (...a) => console[k](...a)));
 
 function boot(storage = {}, motion = false) {
@@ -326,7 +326,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const G3 = boot(st2).window.__tithe;
   ok(G3.state.offerings === 0 && G3.state.turn1 === false && typeof G3.state.mir === "object",
     "a stripped save walks in with defaults");
-  ok(G3.state.v === 7, "version restamped");
+  ok(G3.state.v === 8, "version restamped");
 }
 {
   const st3 = { "tithe-save": "{broken" };
@@ -369,7 +369,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const stV = { "tithe-save": JSON.stringify(sv) };
   const GV = boot(stV).window.__tithe;
   ok(near(GV.state.surgeLeft, 30, 1.5), "a v1 stamp converts to seconds owed");
-  ok(GV.state.v === 7, "and leaves restamped");
+  ok(GV.state.v === 8, "and leaves restamped");
 }
 
 /* ---------- rats in the granary ---------- */
@@ -427,7 +427,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(GB.state.pop === 10, "the flock fits the huts");
   const JB = GB.state.jobs;
   ok(JB.f + JB.w + JB.m + JB.p <= GB.state.pop, "the jobs table follows the head count");
-  ok(GB.state.v === 7, "restamped v7");
+  ok(GB.state.v === 8, "restamped v8");
 }
 
 /* ---------- the spine: faith is born at the turn ---------- */
@@ -514,7 +514,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const GM = boot(stM).window.__tithe;
   ok(GM.state.favor === 400, "favor folds back under the cap (faith 2)");
   ok(GM.state.jobs.p === 2, "the priests fit the faith");
-  ok(GM.state.v === 7 && GM.state.universes === 1, "restamped v7; one universe, as always");
+  ok(GM.state.v === 8 && GM.state.universes === 1, "restamped v8; one universe, as always");
 }
 
 /* ---------- the cultivator: arrivals, not the larder ---------- */
@@ -874,7 +874,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
 
   /* an old save learns the new fields */
   const mg = GH.migrate({ v:4, turn1:true, pop:4, bld:{hut:2}, deeper:2 });
-  ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === 7,
+  ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === 8,
     "an old save learns the new fields at their defaults");
 }
 
@@ -1172,7 +1172,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
 
   /* an old save learns the board's fields */
   const mgA = GA.migrate({ v:5, turn1:true, pop:4, bld:{hut:2} });
-  ok(mgA.heraldSeeds === 0 && mgA.worldProg === 0 && mgA.tithedLine === 0 && mgA.v === 7,
+  ok(mgA.heraldSeeds === 0 && mgA.worldProg === 0 && mgA.tithedLine === 0 && mgA.v === 8,
     "a v5 save learns the board at its defaults");
 
   /* the spelled suffixes (§7.1) */
@@ -1332,7 +1332,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   /* a v6 save meets the silence at its defaults */
   const mgS = GS2.migrate({ v:6, turn1:true, worlds:7, proj:{ ascend:true } });
   ok(mgS.silenceBorn === false && mgS.faint === 0 && mgS.silenceT === 0 &&
-     mgS.dimT === 0 && mgS.v === 7,
+     mgS.dimT === 0 && mgS.v === 8,
     "a v6 save meets the silence at its defaults");
 }
 
@@ -1491,11 +1491,128 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   /* old saves keep their skies */
   const mgK = GK2.migrate({ v:6, turn1:true, galaxy:2, endState:1,
     proj:{ ascend:true, last:true } });
-  ok(mgK.galaxy === 2 && mgK.endState === 1 && mgK.proj.last === true && mgK.v === 7,
+  ok(mgK.galaxy === 2 && mgK.endState === 1 && mgK.proj.last === true && mgK.v === 8,
     "a v6 save keeps its skies and its ending");
   const mgK5 = GK2.migrate({ v:5, turn1:true });
   ok(mgK5.galaxy === 0 && mgK5.endState === 0,
     "a v5 save starts under its first sky");
+}
+
+/* ---------- the choice: three voices, then hunger (§8) ---------- */
+
+{
+  const st9 = {};
+  const w9 = boot(st9).window, d9 = w9.document, G9 = w9.__tithe, S9 = G9.state;
+  /* the same dead village, after the last star */
+  S9.proj.fire = true; S9.proj.tools = true; S9.proj.rats = true; S9.proj.shrineX = true;
+  S9.proj.temple = true; S9.proj.tithe = true; S9.proj.songs = true; S9.proj.calendar = true;
+  S9.proj.lights = true; S9.proj.ascend = true; S9.proj.last = true;
+  S9.mir.goodyear = true; S9.mir.obedience = true; S9.mir.tongues = true; S9.mir.hush = 1;
+  S9.bld.hut = 5; S9.bld.farm = 3; S9.bld.quarry = 1; S9.bld.sawpit = 1; S9.bld.granary = 1;
+  S9.turn1 = true; S9.offerings = 21; S9.nameIdx = 22; S9.deeper = 4;
+  S9.totalFavor = 3000; S9.pop = 0; S9.jobs = { f:0, w:0, m:0, p:0, c:0 };
+  S9.favor = 0; S9.food = 6000; S9.legend = 12; S9.slider = 1; S9.tithedLine = 0;
+  S9.silenceBorn = true; S9.silenceT = 200; S9.faint = 0; S9.dimT = 0;
+  S9.galaxy = 2; S9.worlds = 14; S9.heralds = 0; S9.seen.heraldT = 1;
+  S9.souls = 1594323e12; S9.endState = 1;
+  const tk = s => { S9.last = Date.now() - (s ? s * 1000 : 1); G9.tick(); };
+  tk();
+
+  /* the first seconds after the end are quiet */
+  ok(!d9.getElementById("proj-sil") && !d9.getElementById("proj-cnt") &&
+     !d9.getElementById("proj-offer2") && !d9.getElementById("proj-hunger"),
+    "the end is quiet at first");
+  ok(d9.getElementById("uniLine").textContent === "", "the strip is asleep");
+
+  /* eight seconds: the silence */
+  tk(8.5);
+  const silB = d9.getElementById("proj-sil");
+  ok(!!silB && silB.querySelector(".nm").textContent === "the silence" &&
+     silB.querySelector(".co").textContent === "" && silB.disabled,
+    "the silence speaks first, and the price column is empty");
+  ok(silB.parentElement.querySelector(".tease").textContent === "it was here before the first light.",
+    "it was here before the first light");
+  ok(!d9.getElementById("proj-cnt"), "one voice at a time");
+
+  /* sixteen seconds: the count — and the strip wakes */
+  tk(8.5);
+  const cntB = d9.getElementById("proj-cnt");
+  ok(!!cntB && cntB.querySelector(".nm").textContent === "the count" && cntB.disabled,
+    "the count speaks second");
+  ok(cntB.parentElement.querySelector(".tease").textContent === "you have done this before.",
+    "you have done this before");
+  ok(d9.getElementById("uniLine").textContent === "universe 1",
+    "the strip wakes: universe 1 was always true");
+
+  /* twenty-four seconds: the offer */
+  tk(8.5);
+  const offB = d9.getElementById("proj-offer2");
+  ok(!!offB && offB.querySelector(".nm").textContent === "the offer" && offB.disabled,
+    "the offer speaks last");
+  ok(offB.parentElement.querySelector(".tease").textContent === "it can begin again. or it can stop.",
+    "it can begin again. or it can stop");
+  ok(!d9.getElementById("proj-hunger") && !d9.getElementById("proj-starve"),
+    "the choice waits for the voices to finish");
+
+  /* thirty-two seconds: the choice, two rows at once */
+  tk(8.5);
+  const hunB = d9.getElementById("proj-hunger"), stvB = d9.getElementById("proj-starve");
+  ok(!!hunB && !hunB.disabled && hunB.querySelector(".co").textContent === "",
+    "hunger is lit and unpriced");
+  ok(hunB.parentElement.querySelector(".tease").textContent ===
+     "begin again. the village will not remember. you will.",
+    "the village will not remember. you will");
+  ok(!!stvB && stvB.disabled &&
+     stvB.parentElement.querySelector(".tease").textContent === "refuse.",
+    "starve stands disabled, one word under it");
+
+  /* the voices are not bargains; the refusal is not answered yet */
+  const seed0 = S9.seed;
+  G9.buyProj(G9.PROJ.find(p => p.id === "sil"));
+  G9.buyProj(G9.PROJ.find(p => p.id === "starve"));
+  ok(S9.universes === 1 && !("tithe-universe" in st9) && S9.seed === seed0,
+    "a voice is not a bargain; the refusal is not answered yet");
+
+  /* hunger: the wipe that keeps one number */
+  hunB.click();
+  ok(st9["tithe-universe"] === "2", "the count is kept in its own ledger");
+  const next9 = JSON.parse(st9["tithe-save"]);
+  ok(next9.universes === 2 && next9.endState === 0 && next9.pop === 0 && next9.offerings === 0,
+    "the next village is new and counted");
+  ok(typeof next9.seed === "number" && next9.seed !== seed0,
+    "the names reshuffle");
+  /* the reload fires beforeunload; the old world must not save itself on the way out */
+  w9.dispatchEvent(new w9.Event("beforeunload"));
+  ok(JSON.parse(st9["tithe-save"]).universes === 2,
+    "the old world does not save itself on the way out");
+
+  /* universe two boots fresh and knows its number */
+  const w92 = boot(st9).window, d92 = w92.document, G92 = w92.__tithe, S92 = G92.state;
+  ok(S92.universes === 2 && S92.endState === 0 && S92.pop === 0,
+    "universe two boots the way the first one did");
+  ok(d92.getElementById("uniLine").textContent === "universe 2",
+    "the strip says so from the first frame");
+  ok(near(G92.uMult(), 1.5, 1e-9), "the cycle pays half again");
+  S92.pop = 1; S92.jobs.f = 1;
+  ok(near(G92.jobRate("f"), 0.75, 1e-9), "a forager gathers half again as fast");
+  ok(near(G92.clickPower(), 1.5, 1e-9), "the hand keeps the bargain too");
+
+  /* an import into a clean browser carries the count and re-seeds the ledger */
+  const stX = { "tithe-save": JSON.stringify(next9) };
+  const GX = boot(stX).window.__tithe;
+  ok(GX.state.universes === 2 && stX["tithe-universe"] === "2",
+    "an import carries the count and re-seeds the ledger");
+
+  /* the wipe forgets the village, not the count */
+  delete st9["tithe-save"];
+  const G93 = boot(st9).window.__tithe;
+  ok(G93.state.universes === 2, "the wipe forgets the village, not the count");
+
+  /* a v7 save arrives with the clock at zero */
+  const mg9 = G92.migrate({ v:7, turn1:true, galaxy:2, endState:1,
+    proj:{ ascend:true, last:true } });
+  ok(mg9.endT === 0 && mg9.universes === 1 && mg9.v === 8,
+    "a v7 save arrives with the clock at zero and one universe");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */

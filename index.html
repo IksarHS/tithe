@@ -27,6 +27,7 @@ h1{font-size:.95rem; font-weight:normal; letter-spacing:.45em; margin:0}
 #meta{color:var(--faint); font-size:.72rem}
 #meta a{color:var(--faint)}
 #metaNote{margin-left:1.6em}
+#uniLine:not(:empty){margin-right:1.6em}
 h2{
   font-size:.72rem; font-weight:normal; letter-spacing:.18em; color:var(--dim);
   margin:.65rem 0 .35rem; padding-bottom:.3rem; border-bottom:1px solid var(--line);
@@ -78,7 +79,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 <div id="work">
   <div id="top">
     <h1>tithe</h1>
-    <div id="meta"><a href="#" id="mSave">save</a> · <a href="#" id="mExport">export</a> · <a href="#" id="mImport">import</a> · <a href="#" id="mWipe">wipe</a><span id="metaNote">autosaves · v2</span></div>
+    <div id="meta"><span id="uniLine"></span><a href="#" id="mSave">save</a> · <a href="#" id="mExport">export</a> · <a href="#" id="mImport">import</a> · <a href="#" id="mWipe">wipe</a><span id="metaNote">autosaves · v2</span></div>
   </div>
 
   <div class="col" id="c1">
@@ -143,7 +144,8 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 /* ============================== content ============================== */
 
 const SAVE_KEY = "tithe-save";
-const SAVE_VER = 7;
+const U_KEY    = "tithe-universe";      /* tracked since first install (law 21) — it survives the wipe */
+const SAVE_VER = 8;
 
 const CURS = ["food","wood","stone","favor"];
 const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"totalFavor" };
@@ -195,6 +197,17 @@ const PROJ = [
     show:s=>!!s.proj.ascend && s.worlds>=WORLDS_PER_SKY },
   { id:"last", name:"the last star", flavor:"", costLine:"all the heralds", done:"dark", last:true, act:3,
     show:s=>s.galaxy===2 && s.worlds>=WORLDS_PER_SKY-1 },
+  /* §8: the choice — the price column is empty; the economy is over and someone is speaking */
+  { id:"sil",    name:"the silence", flavor:"it was here before the first light.", voice:true, act:3,
+    show:s=>s.endState>0 && s.endT>=VOICE_S },
+  { id:"cnt",    name:"the count",   flavor:"you have done this before.", voice:true, act:3,
+    show:s=>s.endState>0 && s.endT>=VOICE_S*2 },
+  { id:"offer2", name:"the offer",   flavor:"it can begin again. or it can stop.", voice:true, act:3,
+    show:s=>s.endState>0 && s.endT>=VOICE_S*3 },
+  { id:"hunger", name:"hunger", flavor:"begin again. the village will not remember. you will.", hunger:true, act:3,
+    show:s=>s.endState>0 && s.endT>=VOICE_S*4 },
+  { id:"starve", name:"starve", flavor:"refuse.", starve:true, act:3,
+    show:s=>s.endState>0 && s.endT>=VOICE_S*4 },
 ];
 
 const MIR = [
@@ -257,6 +270,8 @@ const REAP_RATE = 4;                   // favor/s per tithed world at full reap 
 const SILENCE  = { born:5, every:40, mult:2 }; // born at the fifth world; dims one light per 40s; a dim world costs x2
 const VIGIL_RATE = 8;                  // favor/s x 1000^g while the vigil is held
 const SKY_DOOR = 2.0e12;               // souls; the second door costs x1000 — the tithe spends the tithed
+const VOICE_S  = 8;                    // seconds between the ending's cost-less rows — someone is speaking (§8)
+const NGPLUS   = 1.5;                  // all production, per completed universe — the cycle is canon
 const CAP_HUT  = 2;
 const OFFLINE_CAP_S = 3600;
 const FIG_MAX  = 24;
@@ -291,7 +306,7 @@ function fresh() {
     starveT:0, clicks:0, walkPhase:0, smokePhase:0,
     legend:0, deeper:0, doubt:0, doubtT:0, signs:0, slider:0.5, aside:false, asideLeft:0,
     heralds:0, heraldSeeds:0, heraldSpent:0, worlds:0, worldProg:0, souls:0, galaxy:0,
-    tithedLine:0, vigil:false, universes:1, endState:0,
+    tithedLine:0, vigil:false, universes:1, endState:0, endT:0,
     silenceBorn:false, silenceT:0, faint:0, dimT:0,
     seen:{},
   };
@@ -324,6 +339,7 @@ function migrate(raw) {
   /* v4 -> v5: the doubt era (signs, the aside) — new fields arrive with their defaults */
   /* v5 -> v6: the board (act 3) — heralds, worlds, souls arrive the same way */
   /* v6 -> v7: the silence (m7) — faint lights and the vigil's clock, defaults again */
+  /* v7 -> v8: the choice (m9) — the ending's clock arrives at zero */
   s.v = SAVE_VER;
   return s;
 }
@@ -333,6 +349,12 @@ try {
   const raw = localStorage.getItem(SAVE_KEY);
   S = raw ? migrate(JSON.parse(raw)) : fresh();
 } catch (e) { S = fresh(); }
+/* law 21: the count survives the wipe — whichever ledger remembers more, wins */
+try {
+  const u = parseInt(localStorage.getItem(U_KEY), 10) || 1;
+  if (u > S.universes) S.universes = u;
+  if (S.universes > u) localStorage.setItem(U_KEY, String(S.universes));
+} catch (e) {}
 
 /* ============================== prng / names ============================== */
 
@@ -380,6 +402,8 @@ const fmtRate = n => {
 /* ============================== economy ============================== */
 
 const surgeMult = () => S.surgeLeft > 0 ? SURGE.x : 1;
+/* §8: all production, half again per completed universe — the cycle is canon */
+const uMult = () => Math.pow(NGPLUS, (S.universes || 1) - 1);
 const mirMult = out => MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.out===out ? u.eff.x : 1), 1);
 const projAllJobs = () => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff.allJobs ? p.eff.allJobs : 1), 1);
 const projOutMult = out => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff.out===out ? p.eff.x : 1), 1);
@@ -389,9 +413,9 @@ const jobRate = (j, surge) => {
   const def = JOBS.find(x=>x.id===j);
   /* the gift feeds the fields, never the shrine: favor takes no surge, no flint */
   if (def.out === "favor") return stalled() ? 0
-    : S.jobs[j] * def.base * bldJobMult(j) * mirMult(def.out) * projOutMult(def.out);
+    : S.jobs[j] * def.base * bldJobMult(j) * mirMult(def.out) * projOutMult(def.out) * uMult();
   const sm = surge === undefined ? surgeMult() : (surge ? SURGE.x : 1);
-  return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * projOutMult(def.out) * sm;
+  return S.jobs[j] * def.base * bldJobMult(j) * projAllJobs() * mirMult(def.out) * projOutMult(def.out) * sm * uMult();
 };
 const prodOf = (cur, surge) => JOBS.reduce((t,jd)=> t + (jd.out===cur ? jobRate(jd.id, surge) : 0), 0)
   + (cur === "favor" ? congRate() + reapRate() : 0);
@@ -409,7 +433,7 @@ const arriveAt = () => ARRIVE.base * Math.pow(ARRIVE.rate, S.pop) * mirArrive() 
 const arriveCdS = () => ARRIVE_CD * MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.cd ? u.eff.cd : 1), 1);
 const offerYield = () => OFFER.base * Math.pow(OFFER.rate, S.offerings);
 const capS = () => S.bld.granary > 0 ? 8 * OFFLINE_CAP_S : OFFLINE_CAP_S;
-const clickPower = () => S.proj.tools ? 2 : 1;  /* flint fits the hand; the hand still loses to the village */
+const clickPower = () => (S.proj.tools ? 2 : 1) * uMult();  /* flint fits the hand; the hand still loses to the village */
 
 /* the spine: faith is derived, never stored — the flock's regard, measured in what it has already given */
 function faithOf(s) {
@@ -444,7 +468,7 @@ const heraldCost = () => ({ favor: Math.ceil(HERALD.cost * Math.pow(HERALD.rate,
 const worldNeed  = i => WORLD.base * Math.pow(WORLD.rate, i);
 const worldSouls = i => SOUL.base * Math.pow(SOUL.rate, i) * Math.pow(SKY_MULT, S.galaxy);
 /* each tithed world pays for attention; the slider's right share is the asking */
-const reapRate = () => S.proj.ascend && !S.endState ? S.worlds * REAP_RATE * Math.pow(SKY_MULT, S.galaxy) * S.slider : 0;
+const reapRate = () => S.proj.ascend && !S.endState ? S.worlds * REAP_RATE * Math.pow(SKY_MULT, S.galaxy) * S.slider * uMult() : 0;
 /* the silence (§7.3): the vigil's asking, the hush's term, the tongues' doubling */
 const vigilCost  = () => VIGIL_RATE * Math.pow(SKY_MULT, S.galaxy);
 const hushActive = () => S.mir.hush === S.galaxy + 1;  /* the hush is bought per sky */
@@ -475,7 +499,7 @@ function applyTithe() {
 function congRate() {
   if (!S.proj.tithe || stalled()) return 0;
   const pd = JOBS.find(j => j.id === "p");
-  return deriveJobs().cong * pd.base * 0.5 * bldJobMult("p") * mirMult("favor") * projOutMult("favor");
+  return deriveJobs().cong * pd.base * 0.5 * bldJobMult("p") * mirMult("favor") * projOutMult("favor") * uMult();
 }
 
 const bldCost = b => {
@@ -802,7 +826,7 @@ const els = {};
  "h-act","h-village","h-shrine","popLine","offer","shrineTease","surgeLine",
  "foodVal","foodRate","woodVal","woodRate","stoneVal","stoneRate","favorVal","favorRate",
  "legendVal","legendRate","soulsVal","soulsRate","faithLine","sliderRow","slider",
- "sendL","sendR","earlyWorks","congWorks",
+ "sendL","sendR","earlyWorks","congWorks","uniLine",
  "row-food","row-wood","row-stone","row-favor","row-legend","row-souls","bldList","projList","mirList",
  "act-berries","act-wood"].forEach(id => els[id] = $(id));
 JOBS.forEach(j => { els["job-"+j.id]=$("job-"+j.id); els["jn-"+j.id]=$("jn-"+j.id);
@@ -855,6 +879,9 @@ function buyBld(def) {
 function buyProj(def) {
   if (def.sky) return openSky();
   if (def.last) return takeLastStar();
+  if (def.voice) return;             /* someone is speaking; there is nothing to buy */
+  if (def.hunger) return doHunger();
+  if (def.starve) return;            /* the refusal is answered in its own time (m10) */
   if (S.proj[def.id] || !def.cost || !canAfford(def.cost)) return;
   if (def.audit && !def.audit(S)) return;  /* the door audits every wallet (law 12) */
   /* the tithe was wood and stone's last bill: the old ledgers never open again */
@@ -909,6 +936,18 @@ function takeLastStar() {
   S.heralds = 0; S.heraldSeeds = 0; S.heraldSpent = 0; S.faint = 0; S.dimT = 0;
   S.proj.last = true; S.endState = 1;  /* every rate reads 0.0 from here */
   render(); save();
+}
+/* §8: begin again — the cycle is canon. the village will not remember; the count will */
+function doHunger() {
+  if (!S.endState) return;
+  leaving = true;  /* the old world must not save itself on the way out */
+  const u = (S.universes || 1) + 1;
+  try { localStorage.setItem(U_KEY, String(u)); } catch (e) {}
+  const next = fresh();
+  next.seed = (mulberry32(S.seed ^ 0x9e3779b9)() * 2147483647) | 0;  /* the names reshuffle, deterministically */
+  next.universes = u;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(next)); } catch (e) {}
+  location.reload();  /* the next village boots the way the first one did */
 }
 function buyMir(def) {
   const c = mirCost(def);
@@ -1108,6 +1147,10 @@ function render() {
     if (els["slider"].value !== v) els["slider"].value = v;
   }
 
+  /* §8: the strip wakes when the count speaks — and never sleeps again */
+  setText(els["uniLine"],
+    (S.universes > 1 || (S.endState && S.endT >= VOICE_S * 2)) ? "universe " + S.universes : "");
+
   for (const key of Object.keys(rowNodes)) {
     const r = rowNodes[key], def = r.def;
     if (r.kind === "bld" && def.herald) {
@@ -1138,6 +1181,11 @@ function render() {
       setText(r.ct, "");
       setText(r.co, S.proj.last ? def.done : def.costLine);
       r.btn.disabled = !!S.proj.last || S.galaxy !== 2 || S.worlds !== WORLDS_PER_SKY - 1 || S.heralds < 1;
+    } else if (r.kind === "proj" && (def.voice || def.hunger || def.starve)) {
+      /* §8: the price column is empty — the economy is over and someone is speaking */
+      setText(r.ct, "");
+      setText(r.co, "");
+      r.btn.disabled = !def.hunger;  /* the refusal is answered in its own time (m10) */
     } else if (r.kind === "bld") {
       const atMax = def.max && S.bld[def.id] >= def.max;
       const c = bldCost(def);
@@ -1253,7 +1301,7 @@ function tick() {
       /* §7.4: in the third sky the heralds stop one short — the last star is taken by hand */
       const lim = WORLDS_PER_SKY - (S.galaxy === 2 ? 1 : 0);
       if (S.worlds < lim) {
-        S.worldProg += S.heralds * sp * dt * convMult();
+        S.worldProg += S.heralds * sp * dt * convMult() * uMult();
         /* a dimmed world costs double — a stall, never a loss (§7.1) */
         while (S.worlds < lim &&
                S.worldProg >= worldNeed(S.worlds) * (S.faint > 0 ? SILENCE.mult : 1)) {
@@ -1283,6 +1331,8 @@ function tick() {
       }
     }
   }
+  /* §8: after the last star the only thing still moving is the speaker's clock */
+  if (S.endState) S.endT += dt;
   S.surgeLeft = Math.max(0, S.surgeLeft - dt);
   if (S.pop > 0 || S.jobs.p > 0) S.food = Math.max(0, S.food - upkeep() * dt);
   if (ratsDrain() > 0) S.food = Math.max(0, S.food - RATS_DRAIN * dt);
@@ -1304,11 +1354,14 @@ function tick() {
 
 /* ============================== save / load ============================== */
 
+let leaving = false;  /* a reload on purpose — beforeunload must not re-save the old world */
 function save() {
+  if (leaving) return;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {}
 }
 function wipe() {
   if (!confirm("wipe the save?")) return;
+  leaving = true;
   try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
   location.reload();
 }
@@ -1320,6 +1373,7 @@ function doImport() {
     const p = prompt("paste a save:");
     if (!p) return;
     const parsed = migrate(JSON.parse(atob(p.trim())));
+    leaving = true;
     localStorage.setItem(SAVE_KEY, JSON.stringify(parsed));
     location.reload();
   } catch (e) {}
@@ -1364,7 +1418,9 @@ window.__tithe = {
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE, DOUBT_S, ASIDE,
   TITHED_S, HERALD, WORLDS_PER_SKY, WORLD, SOUL, SKY_MULT, REAP_RATE, SILENCE, VIGIL_RATE, SKY_DOOR,
+  VOICE_S, NGPLUS,
   buyBld, buyProj, buyMir, doOffering, fixJobs, ascend, buyHerald, recallHeralds, openSky, takeLastStar,
+  doHunger, uMult,
   heraldCost, worldNeed, worldSouls, reapRate, vigilCost, hushActive, convMult, skyCost,
   faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate, stalled, mirCost,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
