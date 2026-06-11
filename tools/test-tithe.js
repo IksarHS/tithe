@@ -91,8 +91,8 @@ ok(hutBtn.nextElementSibling.textContent === "room for 2", "the one-time tease g
 sc = G.villageScene();
 ok(sc.builds.some(b => b.sprite === "hut"), "the hut stands at its anchor");
 ok(!d.getElementById("sec-village").classList.contains("hidden"), "the village panel wakes with the first hut");
-ok(d.getElementById("popLine").textContent === "villagers 0 / 2 · idle 0 · next at 15 food",
-  "the empty hut names its price");
+ok(d.getElementById("popLine").textContent === "villagers 0 / 2 · idle 0 · next at 15 food · content",
+  "the empty hut names its price, and the village is content");
 
 S().food = 20; ff(0.2);
 ok(S().pop === 1, "food draws the first villager");
@@ -1770,6 +1770,76 @@ ok(!!store["tithe-save"], "save written on beforeunload");
     proj:{ ascend:true, last:true } });
   ok(mg10.starved === 0 && mg10.quiet === 0 && mg10.gather === 0 && mg10.v === G11.SAVE_VER,
     "a v8 save arrives with the ending unbegun");
+}
+
+/* ---------- m11: the word walks down, the red walks out ---------- */
+
+{
+  const stMo = {};
+  const wMo = boot(stMo).window, dMo = wMo.document, GMo = wMo.__tithe, SMo = GMo.state;
+  const pline = () => dMo.getElementById("popLine").textContent;
+  const ends = w => pline().lastIndexOf(" · " + w) === pline().length - w.length - 3;
+
+  /* law 22: the mood ladder — one word, walking down, never announced */
+  SMo.proj.fire = true; SMo.bld.hut = 1; SMo.pop = 1; SMo.food = 5;
+  GMo.render();
+  ok(ends("content"), "the village is content");
+  SMo.turn1 = true; GMo.render();
+  ok(ends("quiet"), "after the turn, quiet");
+  SMo.proj.tithe = true; GMo.render();
+  ok(ends("watchful"), "under the tithe, watchful");
+  SMo.deeper = 1; GMo.render();
+  ok(ends("waiting"), "the first rung: waiting");
+  SMo.totalFavor = 3000; SMo.deeper = 4; GMo.render();
+  ok(GMo.faithOf(SMo) >= GMo.FAITH_MAX && ends("given"),
+    "at thirteen, the word is given");
+
+  /* the red spread reaches the rungs */
+  SMo.offerings = 13; GMo.render();
+  ok(dMo.querySelector(".jname").classList.contains("blood"),
+    "thirteen: the trades carry the red");
+  ok(!dMo.getElementById("popLine").classList.contains("blood"),
+    "the flock line is not yet touched");
+  SMo.offerings = 17; GMo.render();
+  ok(dMo.getElementById("popLine").classList.contains("blood"),
+    "seventeen: the flock line reds");
+  SMo.offerings = 21; GMo.render();
+  ok(dMo.getElementById("sendL").classList.contains("blood") &&
+     dMo.getElementById("sendR").classList.contains("blood"),
+    "twenty-one: both ends of the dial");
+
+  /* and walks on through act 3, in worlds */
+  ok(!dMo.getElementById("soulsVal").classList.contains("blood"),
+    "the souls count waits for the fifth world");
+  SMo.galaxy = 0; SMo.worlds = 5; GMo.render();
+  ok(dMo.getElementById("soulsVal").classList.contains("blood"),
+    "five worlds: the souls count reds");
+  ok(!dMo.getElementById("foodVal").classList.contains("blood"),
+    "the numbers themselves wait for a full sky");
+  SMo.worlds = 14; GMo.render();
+  ok(dMo.getElementById("foodVal").classList.contains("blood") &&
+     dMo.getElementById("favorVal").classList.contains("blood"),
+    "a full sky: every number in the ledger");
+  ok(!dMo.querySelector("h1").classList.contains("blood"),
+    "the name holds out until the last star");
+  SMo.galaxy = 2; SMo.worlds = 14; GMo.render();
+  ok(dMo.querySelector("h1").classList.contains("blood"),
+    "forty-two: the last star takes the name");
+
+  /* reload: none of it washes off */
+  SMo.last = Date.now(); GMo.save();
+  const wMo2 = boot(stMo).window, dMo2 = wMo2.document;
+  ok(dMo2.querySelector("h1").classList.contains("blood") &&
+     dMo2.getElementById("popLine").classList.contains("blood") &&
+     dMo2.getElementById("sendL").classList.contains("blood"),
+    "reload: the spread is remembered to the last selector");
+
+  /* a11y: the field names itself; the dial says what it does */
+  ok(dMo.getElementById("scene").getAttribute("role") === "img" &&
+     dMo.getElementById("scene").getAttribute("aria-label") === "the field",
+    "the field is named for those who cannot see it");
+  ok((dMo.getElementById("slider").getAttribute("aria-label") || "").length > 0,
+    "the dial says what it does");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */

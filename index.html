@@ -137,7 +137,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
     </section>
   </div>
 </div>
-<div id="field"><canvas id="scene"></canvas></div>
+<div id="field"><canvas id="scene" role="img" aria-label="the field"></canvas></div>
 </div>
 
 <script>
@@ -235,6 +235,15 @@ const ASIDE = { text:"they do not count themselves.", s:60 };
 /* §8: the last gathering — the only time anything answers the picture */
 const GATHER = { line: n => "for " + n + ".", end: "the hill keeps the names." };
 
+/* law 22: one word carries the flock — the line's mood walks down as the game walks on */
+const MOOD = [
+  { word:"content",  when:s=>true },
+  { word:"quiet",    when:s=>s.turn1 },
+  { word:"watchful", when:s=>!!s.proj.tithe },
+  { word:"waiting",  when:s=>s.deeper >= 1 },
+  { word:"given",    when:s=>faithOf(s) >= FAITH_MAX },
+];
+
 const LEX = [
   { id:"h-shrine",    pre:"the hollow",     post:"the shrine" },
   { id:"h-act",       pre:"actions",        post:"answers" },
@@ -250,13 +259,22 @@ const NAMES = ["mara","aldo","edda","bram","sela","otto","wren","hale","ivo","ju
   "nan","orla","pike","quill","rue","sorrel","teal","una","vail","webb",
   "finch","greta","hugh","iris","jonas","kit","lena","pim"];
 
-/* red spreads at sacrifice thresholds: offerings reached -> selector tinted */
+/* red spreads at sacrifice thresholds: offerings reached -> selector tinted.
+   act 3 carries it on in worlds tithed across skies; the last star takes the name */
 const SPREAD = [
   { at:1,  sel:"#h-shrine" },
   { at:2,  sel:"#favorVal" },
   { at:4,  sel:".rate" },
   { at:7,  sel:"h2" },
   { at:10, sel:".store .nm" },
+  { at:13, sel:".jname" },
+  { at:17, sel:"#popLine" },
+  { at:21, sel:".send" },
+];
+const SPREAD_W = [
+  { at:5,  sel:"#soulsVal" },
+  { at:14, sel:".val" },
+  { at:42, sel:"h1" },
 ];
 
 const UPKEEP   = 0.25;                 // food/s per villager; priests eat double
@@ -448,6 +466,7 @@ const arriveCdS = () => ARRIVE_CD * MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff
 const offerYield = () => OFFER.base * Math.pow(OFFER.rate, S.offerings);
 const capS = () => S.bld.granary > 0 ? 8 * OFFLINE_CAP_S : OFFLINE_CAP_S;
 const clickPower = () => (S.proj.tools ? 2 : 1) * uMult();  /* flint fits the hand; the hand still loses to the village */
+const moodWord = () => { let m = ""; for (const x of MOOD) if (x.when(S)) m = x.word; return m; };
 
 /* the spine: faith is derived, never stored — the flock's regard, measured in what it has already given */
 function faithOf(s) {
@@ -1128,6 +1147,7 @@ function checkReveals() {
 const lex = id => { const l = LEX.find(x=>x.id===id); if (!l) return "";
   return (S.turn1 && !(l.dawn && S.quiet >= 5)) ? l.post : l.pre; };  /* §8: the first verb returns */
 let lastSpread = -1;
+let lastSpreadW = -1;
 
 /* the one-time tease gives way to the rate: the line stays, the words earn their keep */
 function effLine(def) {
@@ -1192,6 +1212,7 @@ function render() {
       (S.proj.tithe ? " · congregation " + deriveJobs().cong : " · idle " + idle());
     if (S.proj.fire && S.pop < cap() && S.food < arriveAt())
       pl += " · next at " + fmt(arriveAt()) + " food";
+    pl += " · " + moodWord();  /* law 22: the word walks down, never announced */
   }
   setText(els["popLine"], pl);
 
@@ -1314,6 +1335,12 @@ function render() {
   if (S.offerings !== lastSpread) {
     lastSpread = S.offerings;
     for (const sp of SPREAD) if (S.offerings >= sp.at)
+      document.querySelectorAll(sp.sel).forEach(n => n.classList.add("blood"));
+  }
+  const wc = S.galaxy * WORLDS_PER_SKY + S.worlds;  /* monotonic across the doors */
+  if (wc !== lastSpreadW) {
+    lastSpreadW = wc;
+    for (const sp of SPREAD_W) if (wc >= sp.at)
       document.querySelectorAll(sp.sel).forEach(n => n.classList.add("blood"));
   }
 
@@ -1488,13 +1515,13 @@ setInterval(save, 10000);
 window.__tithe = {
   get state() { return S; },
   tick, render, save, migrate, fresh,
-  JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, ANCHORS, SITES, PAL,
+  JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, SPREAD_W, MOOD, ANCHORS, SITES, PAL,
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE, DOUBT_S, ASIDE,
   TITHED_S, HERALD, WORLDS_PER_SKY, WORLD, SOUL, SKY_MULT, REAP_RATE, SILENCE, VIGIL_RATE, SKY_DOOR,
   VOICE_S, NGPLUS, SAVE_VER,
   buyBld, buyProj, buyMir, doOffering, fixJobs, ascend, buyHerald, recallHeralds, openSky, takeLastStar,
-  doHunger, uMult, doStarve, doQuiet, doGather, gatherName, GATHER,
+  doHunger, uMult, doStarve, doQuiet, doGather, gatherName, GATHER, moodWord,
   heraldCost, worldNeed, worldSouls, reapRate, vigilCost, hushActive, convMult, skyCost,
   faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate, stalled, mirCost,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
