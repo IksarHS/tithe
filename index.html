@@ -62,6 +62,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 }
 #popLine{color:var(--dim); margin:.1rem 0 .4rem; min-height:1.2em}
 #surgeLine{color:var(--dim); min-height:1.2em; max-width:21rem}
+#faithLine{color:var(--dim); min-height:1.2em; max-width:21rem}
 .blood{color:var(--blood)}
 #field{position:relative; border-top:1px solid var(--line)}
 #scene{display:block; width:100%; height:100%}
@@ -90,6 +91,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
       <div class="store hidden" id="row-wood"><span class="nm">wood</span><span><span class="val" id="woodVal">0.0</span><span class="rate" id="woodRate"></span></span></div>
       <div class="store hidden" id="row-stone"><span class="nm">stone</span><span><span class="val" id="stoneVal">0.0</span><span class="rate" id="stoneRate"></span></span></div>
       <div class="store hidden" id="row-favor"><span class="nm">favor</span><span><span class="val" id="favorVal">0.0</span><span class="rate" id="favorRate"></span></span></div>
+      <div class="store ghost" id="row-legend"><span class="nm">legend</span><span><span class="val" id="legendVal">0.0</span><span class="rate" id="legendRate"></span></span></div>
     </section>
     <section id="sec-mir" class="hidden">
       <h2 id="h-mir">miracles</h2>
@@ -122,6 +124,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
       <button id="offer"></button>
       <div class="tease" id="shrineTease"></div>
       <div id="surgeLine"></div>
+      <div id="faithLine" class="ghost"></div>
     </section>
   </div>
 </div>
@@ -133,7 +136,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 /* ============================== content ============================== */
 
 const SAVE_KEY = "tithe-save";
-const SAVE_VER = 3;
+const SAVE_VER = 4;
 
 const CURS = ["food","wood","stone","favor"];
 const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"totalFavor" };
@@ -202,6 +205,10 @@ const LEAVE_S  = 20;                   // seconds at zero food before one walks 
 const SURGE    = { x:8, s:90 };        // the offering's gift — it feeds the fields, never the shrine
 const RATS_DRAIN = 0.5;                // food/s while no one watches the granary
 const OFFER    = { base:5, rate:1.5 }; // favor yield per offering
+const FAITH_GATES = [25,65,130,235,405,680,1125,1850]; // cumulative favor; each crossing is silent
+const FAITH_MAX = 13;                  // 1 at the turn + 8 gates + 4 deeper offerings
+const FAVOR_CAP_PER = 200;             // favor cap = 200 x faith — the cap is itself a forecast
+const LEGEND_RATE = 0.3;               // /s, only while favor rests at its cap
 const CAP_HUT  = 2;
 const OFFLINE_CAP_S = 3600;
 const FIG_MAX  = 24;
@@ -232,6 +239,8 @@ function fresh() {
     proj:{}, mir:{},
     offerings:0, nameIdx:0, surgeLeft:0, arriveCd:0, ratsIdx:-1, turn1:false, glowLock:0,
     starveT:0, clicks:0, walkPhase:0, smokePhase:0,
+    legend:0, deeper:0, doubt:0, doubtT:0, slider:0.5,
+    heralds:0, worlds:0, souls:0, galaxy:0, vigil:false, universes:1, endState:0,
     seen:{},
   };
 }
@@ -256,6 +265,10 @@ function migrate(raw) {
   if (raw && typeof raw.surgeUntil === "number" && typeof raw.surgeLeft !== "number") {
     s.surgeLeft = Math.max(0, Math.min(SURGE.s, (raw.surgeUntil - (raw.last || 0)) / 1000));
   }
+  /* v3 -> v4: the spine — favor learns its cap, the priests fit the faith */
+  const fa = faithOf(s);
+  if (s.turn1 && s.favor > FAVOR_CAP_PER * fa) s.favor = FAVOR_CAP_PER * fa;
+  if (s.jobs.p > fa) s.jobs.p = fa;
   s.v = SAVE_VER;
   return s;
 }
@@ -332,6 +345,25 @@ const arriveAt = () => ARRIVE.base * Math.pow(ARRIVE.rate, S.pop) * mirArrive();
 const offerYield = () => OFFER.base * Math.pow(OFFER.rate, S.offerings);
 const capS = () => OFFLINE_CAP_S;
 const clickPower = () => S.proj.tools ? 2 : 1;  /* flint fits the hand; the hand still loses to the village */
+
+/* the spine: faith is derived, never stored — the flock's regard, measured in what it has already given */
+function faithOf(s) {
+  s = s || S;
+  if (!s.turn1) return 0;
+  let f = 1 + (s.deeper || 0);
+  for (const g of FAITH_GATES) if (s.totalFavor >= g) f++;
+  return Math.min(FAITH_MAX, f);
+}
+function favorCap(s) { return FAVOR_CAP_PER * Math.max(1, faithOf(s)); }
+/* favor fills to the brim and no further; what cannot fit was never given */
+function grantFavor(y) {
+  const cp = favorCap();
+  if (S.favor >= cp || y <= 0) return 0;
+  if (y >= cp - S.favor) { y = cp - S.favor; S.favor = cp; } else { S.favor += y; }
+  S.totalFavor += y;
+  return y;
+}
+const jobCapOf = j => j === "p" ? faithOf() : Infinity;
 
 const bldCost = b => {
   const c = {};
@@ -601,7 +633,8 @@ const els = {};
 ["sec-stores","sec-village","sec-bld","sec-proj","sec-shrine","sec-mir",
  "h-act","h-village","h-shrine","popLine","offer","shrineTease","surgeLine",
  "foodVal","foodRate","woodVal","woodRate","stoneVal","stoneRate","favorVal","favorRate",
- "row-food","row-wood","row-stone","row-favor","bldList","projList","mirList",
+ "legendVal","legendRate","faithLine",
+ "row-food","row-wood","row-stone","row-favor","row-legend","bldList","projList","mirList",
  "act-berries","act-wood"].forEach(id => els[id] = $(id));
 JOBS.forEach(j => { els["job-"+j.id]=$("job-"+j.id); els["jn-"+j.id]=$("jn-"+j.id);
   els["jp-"+j.id]=$("jp-"+j.id); els["jm-"+j.id]=$("jm-"+j.id); });
@@ -661,15 +694,14 @@ function doOffering() {
   /* after the first, the shrine takes only from a full village */
   if (S.pop < 1 || (S.offerings > 0 && S.pop < cap())) return;
   S.pop--; fixJobs();
-  const y = offerYield();
-  S.favor += y; S.totalFavor += y;
+  if (!S.turn1) {
+    S.turn1 = true;   /* faith is born at 1 — one of them believed first */
+    S.glowLock = Math.min(1, Math.log10(1 + S.totalFood + S.totalWood + S.totalStone) / 4);
+  }
+  grantFavor(offerYield());
   S.offerings++; S.nameIdx++;
   S.surgeLeft = SURGE.s;
   S.arriveCd = Math.max(S.arriveCd, ARRIVE_CD);   /* the gap must be seen before it closes */
-  if (!S.turn1) {
-    S.turn1 = true;
-    S.glowLock = Math.min(1, Math.log10(1 + S.totalFood + S.totalWood + S.totalStone) / 4);
-  }
   render(); save();
 }
 
@@ -699,6 +731,8 @@ function checkReveals() {
   if (S.totalWood > 0) see("row-wood", els["row-wood"]);
   if (S.totalStone > 0) see("row-stone", els["row-stone"]);
   if (S.turn1) see("row-favor", els["row-favor"]);
+  if (S.legend > 0) see("row-legend", els["row-legend"], true);
+  if (S.turn1) see("faith", els["faithLine"], true);
   for (const a of ACTS) if (a.show && (S.seen["a:"+a.id] || a.show(S))) see("a:"+a.id, els[a.el], true);
   if (S.pop > 0 || S.bld.hut > 0) see("village", els["sec-village"]);
   for (const j of JOBS) if (S.seen["j:"+j.id] || j.show(S)) see("j:"+j.id, els["job-"+j.id], true);
@@ -765,7 +799,10 @@ function render() {
   setText(els["foodRate"], (S.pop > 0 || prodOf("food") > 0) ? fmtRate(rateOf("food")) : "");
   setText(els["woodRate"], prodOf("wood") > 0 ? fmtRate(rateOf("wood")) : "");
   setText(els["stoneRate"], prodOf("stone") > 0 ? fmtRate(rateOf("stone")) : "");
-  setText(els["favorRate"], prodOf("favor") > 0 ? fmtRate(rateOf("favor")) : "");
+  setText(els["favorRate"], prodOf("favor") > 0 && S.favor < favorCap() ? fmtRate(rateOf("favor")) : "");
+  setText(els["legendVal"], fmtStore(S.legend));
+  setText(els["legendRate"], S.turn1 && S.favor >= favorCap() ? fmtRate(LEGEND_RATE) : "");
+  setText(els["faithLine"], S.turn1 ? "faith " + faithOf() : "");
 
   setText(els["h-act"], lex("h-act"));
   setText(els["act-berries"], lex("act-berries"));
@@ -779,7 +816,7 @@ function render() {
 
   for (const j of JOBS) {
     setText(els["jn-"+j.id], String(S.jobs[j.id]));
-    els["jp-"+j.id].disabled = idle() < 1;
+    els["jp-"+j.id].disabled = idle() < 1 || S.jobs[j.id] >= jobCapOf(j.id);
     els["jm-"+j.id].disabled = S.jobs[j.id] < 1;
   }
 
@@ -842,8 +879,13 @@ function tick() {
   const sDt = Math.min(dt, Math.max(0, S.surgeLeft));
   for (const cur of CURS) {
     const gain = (sDt > 0 ? prodOf(cur, true) * sDt : 0) + prodOf(cur, false) * (dt - sDt);
-    if (gain > 0) { S[cur] += gain; S[TOT[cur]] += gain; }
+    if (gain > 0) {
+      if (cur === "favor") grantFavor(gain);
+      else { S[cur] += gain; S[TOT[cur]] += gain; }
+    }
   }
+  /* legend: the god must sit still to be storied */
+  if (S.turn1 && S.favor >= favorCap()) S.legend += LEGEND_RATE * dt;
   S.surgeLeft = Math.max(0, S.surgeLeft - dt);
   if (S.pop > 0 || S.jobs.p > 0) S.food = Math.max(0, S.food - upkeep() * dt);
   if (ratsDrain() > 0) S.food = Math.max(0, S.food - RATS_DRAIN * dt);
@@ -891,7 +933,8 @@ els["act-berries"].addEventListener("click", () => doAct(ACTS[0]));
 els["act-wood"].addEventListener("click", () => doAct(ACTS[1]));
 els["offer"].addEventListener("click", doOffering);
 for (const j of JOBS) {
-  els["jp-"+j.id].addEventListener("click", () => { if (idle() > 0) { S.jobs[j.id]++; render(); } });
+  els["jp-"+j.id].addEventListener("click", () => {
+    if (idle() > 0 && S.jobs[j.id] < jobCapOf(j.id)) { S.jobs[j.id]++; render(); } });
   els["jm-"+j.id].addEventListener("click", () => { if (S.jobs[j.id] > 0) { S.jobs[j.id]--; render(); } });
 }
 $("mSave").addEventListener("click", e => { e.preventDefault(); save(); });
@@ -915,7 +958,9 @@ window.__tithe = {
   tick, render, save, migrate, fresh,
   JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, ANCHORS, SITES, PAL,
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
+  FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE,
   buyBld, buyProj, buyMir, doOffering, fixJobs,
+  faithOf, favorCap, grantFavor, jobCapOf,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
   bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, effLine,
   smokeRate, glowT, redT, nextName, nameAt,

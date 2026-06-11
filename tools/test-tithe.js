@@ -325,7 +325,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const G3 = boot(st2).window.__tithe;
   ok(G3.state.offerings === 0 && G3.state.turn1 === false && typeof G3.state.mir === "object",
     "a stripped save walks in with defaults");
-  ok(G3.state.v === 3, "version restamped");
+  ok(G3.state.v === 4, "version restamped");
 }
 {
   const st3 = { "tithe-save": "{broken" };
@@ -368,7 +368,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const stV = { "tithe-save": JSON.stringify(sv) };
   const GV = boot(stV).window.__tithe;
   ok(near(GV.state.surgeLeft, 30, 1.5), "a v1 stamp converts to seconds owed");
-  ok(GV.state.v === 3, "and leaves restamped");
+  ok(GV.state.v === 4, "and leaves restamped");
 }
 
 /* ---------- rats in the granary ---------- */
@@ -426,7 +426,94 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(GB.state.pop === 10, "the flock fits the huts");
   const JB = GB.state.jobs;
   ok(JB.f + JB.w + JB.m + JB.p <= GB.state.pop, "the jobs table follows the head count");
-  ok(GB.state.v === 3, "restamped v3");
+  ok(GB.state.v === 4, "restamped v4");
+}
+
+/* ---------- the spine: faith is born at the turn ---------- */
+
+{
+  const stF = {};
+  const wF = boot(stF).window, dF = wF.document, GF = wF.__tithe, SF = GF.state;
+  ok(dF.getElementById("row-legend").classList.contains("ghost"), "legend reserves its slot as a ghost");
+  ok(dF.getElementById("faithLine").classList.contains("ghost"), "the faith line waits unseen");
+  ok(GF.faithOf() === 0, "before the turn there is no faith");
+  SF.proj.fire = true; SF.proj.shrineX = true; SF.bld.hut = 1;
+  SF.pop = 2; SF.food = 999;
+  SF.last = Date.now() - 1; GF.tick();
+  dF.getElementById("offer").click();
+  ok(SF.turn1 === true && GF.faithOf() === 1, "faith is born at 1 — one of them believed first");
+  ok(dF.getElementById("faithLine").textContent === "faith 1", "the line states it plainly");
+  ok(!dF.getElementById("faithLine").classList.contains("ghost"), "and steps out of its ghost");
+  ok(dF.getElementById("row-legend").classList.contains("ghost"), "legend waits — at the turn there is no story yet");
+  SF.totalFavor = 25;
+  ok(GF.faithOf() === 2, "the first gate opens at 25");
+  SF.totalFavor = 1850;
+  ok(GF.faithOf() === 9, "all eight gates: faith 9");
+  SF.deeper = 4;
+  ok(GF.faithOf() === 13, "four deeper offerings reach the ceiling");
+  SF.deeper = 9;
+  ok(GF.faithOf() === 13, "and the ceiling holds");
+}
+
+/* ---------- the cap and the legend: the god must sit still ---------- */
+
+{
+  const stL = {};
+  const GL = boot(stL).window.__tithe, SL = GL.state;
+  SL.turn1 = true; SL.favor = 195;
+  const got = GL.grantFavor(10);
+  ok(SL.favor === 200, "favor meets its cap exactly — no drift at the rim");
+  ok(got === 5 && SL.totalFavor === 5, "only what fits is counted");
+  ok(GL.grantFavor(50) === 0 && SL.totalFavor === 5, "at the cap, grants add nothing — the gates freeze with the stillness");
+  SL.last = Date.now() - 10000; GL.tick();
+  ok(near(SL.legend, 3, 0.1), "ten still seconds: three legend");
+  SL.favor = 100;
+  const lgB = SL.legend;
+  SL.last = Date.now() - 10000; GL.tick();
+  ok(SL.legend === lgB, "spent favor: the story stops");
+}
+{
+  const stL2 = {};
+  const wL2 = boot(stL2).window, dL2 = wL2.document, GL2 = wL2.__tithe, SL2 = GL2.state;
+  SL2.turn1 = true; SL2.favor = 200;
+  SL2.last = Date.now() - 5000; GL2.tick();
+  ok(!dL2.getElementById("row-legend").classList.contains("ghost"), "the first legend wakes its row");
+  ok(dL2.getElementById("legendRate").textContent !== "", "at the cap, the rate is quoted");
+  SL2.favor = 50;
+  SL2.last = Date.now() - 100; GL2.tick();
+  ok(dL2.getElementById("legendRate").textContent === "", "below it, the line goes quiet");
+}
+
+/* ---------- the priests fit the faith ---------- */
+
+{
+  const stP = {};
+  const wP = boot(stP).window, dP = wP.document, GP = wP.__tithe, SP = GP.state;
+  SP.turn1 = true; SP.proj.fire = true; SP.bld.hut = 3; SP.pop = 5; SP.food = 999;
+  SP.last = Date.now() - 1; GP.tick();
+  dP.getElementById("jp-p").click();
+  ok(SP.jobs.p === 1, "one priest at faith 1");
+  dP.getElementById("jp-p").click();
+  ok(SP.jobs.p === 1, "a second is not taken");
+  ok(dP.getElementById("jp-p").disabled, "the row says so without words");
+  SP.totalFavor = 25; GP.render();
+  ok(!dP.getElementById("jp-p").disabled, "faith 2 makes room");
+  dP.getElementById("jp-p").click();
+  ok(SP.jobs.p === 2, "and a second kneels");
+}
+
+/* ---------- a v3 ledger meets the cap ---------- */
+
+{
+  const sv = JSON.parse(store["tithe-save"]);
+  sv.v = 3; sv.turn1 = true; sv.totalFavor = 30;
+  sv.favor = 999; sv.bld = { hut: 3, farm: 1, quarry: 1, sawpit: 0 };
+  sv.pop = 6; sv.jobs = { f: 1, w: 0, m: 1, p: 5 };
+  const stM = { "tithe-save": JSON.stringify(sv) };
+  const GM = boot(stM).window.__tithe;
+  ok(GM.state.favor === 400, "favor folds back under the cap (faith 2)");
+  ok(GM.state.jobs.p === 2, "the priests fit the faith");
+  ok(GM.state.v === 4 && GM.state.universes === 1, "restamped v4; one universe, as always");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */

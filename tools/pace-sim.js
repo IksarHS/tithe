@@ -12,6 +12,7 @@
  *   first offering  < 480s (8 min)
  *   first miracle   1-4 min after the turn (earned, not instant)
  *   the tithe teased < 12 bot-min total (the second-session hook lands in one)
+ *   faith 4 by bot minute 9 (the spine climbs while the bot answers)
  *   the hunger wall: after excavation, WITHOUT the offering nothing new
  *   ever unlocks — the sim measures how flat that road is.
  */
@@ -26,6 +27,9 @@ const SURGE  = { x: 8, s: 90 };
 const OFFER  = { base: 5, rate: 1.5 };
 const CAP_HUT = 2;
 const RATS = { at: 120, drain: 0.5 };
+const FAITH_GATES = [25, 65, 130, 235, 405, 680, 1125, 1850];
+const FAVOR_CAP_PER = 200;
+const LEGEND_RATE = 0.3;
 
 const JOBS = {
   f: { base: 0.50, out: "food"  },
@@ -76,6 +80,16 @@ const upkeep = s => (s.pop + s.jobs.p * ((JOBS.p.eats || 1) - 1)) * UPKEEP;
 const ratsDrain = s => (s.ratsSeen && !s.proj.rats) ? RATS.drain : 0;
 const cap = s => s.bld.hut * CAP_HUT;
 const arriveAt = s => ARRIVE.base * Math.pow(ARRIVE.rate, s.pop) * (s.mir.goodyear ? 0.5 : 1);
+/* the spine — faith derived, favor capped, every grant through one door */
+const faithOf = s => s.offerings === 0 ? 0 :
+  Math.min(13, 1 + (s.deeper || 0) + FAITH_GATES.filter(g => s.totalFavor >= g).length);
+const favorCap = s => FAVOR_CAP_PER * Math.max(1, faithOf(s));
+const grantFavor = (s, y) => {
+  const cp = favorCap(s);
+  if (s.favor >= cp || y <= 0) return 0;
+  if (y >= cp - s.favor) { y = cp - s.favor; s.favor = cp; } else { s.favor += y; }
+  s.totalFavor += y; return y;
+};
 
 /* ---------- sim ---------- */
 function freshSim() {
@@ -85,6 +99,7 @@ function freshSim() {
     pop: 0, jobs: { f: 0, w: 0, m: 0, p: 0 },
     bld: { hut: 0, farm: 0, quarry: 0, sawpit: 0 },
     proj: {}, mir: {}, offerings: 0, surgeLeft: 0, arriveCd: 0, ratsSeen: false,
+    deeper: 0, legend: 0, faithSeen: 0,
     minFoodRate3p: Infinity,
     events: [],
   };
@@ -94,7 +109,7 @@ const mark = (s, label) => s.events.push({ t: s.t, label });
 /* bot job policy: feed the mouths first, then priests (post-turn), then stone */
 function alloc(s) {
   const fPer = JOBS.f.base * bldJobMult(s, "f") * (s.proj.tools ? 1.5 : 1);
-  const wantP = s.offerings > 0 ? WANT_P : 0;
+  const wantP = s.offerings > 0 ? Math.min(WANT_P, faithOf(s)) : 0;  /* the priests fit the faith */
   const J = { f: 0, w: 0, m: 0, p: 0 };
   let left = s.pop;
   const need = (s.pop + wantP) * UPKEEP + ratsDrain(s) + 0.01;
@@ -106,8 +121,7 @@ function alloc(s) {
 
 function doOffer(s) {
   s.pop--; s.offerings++;
-  const y = OFFER.base * Math.pow(OFFER.rate, s.offerings - 1);
-  s.favor += y; s.totalFavor += y;
+  grantFavor(s, OFFER.base * Math.pow(OFFER.rate, s.offerings - 1));
   s.surgeLeft = SURGE.s;
   s.arriveCd = Math.max(s.arriveCd, ARRIVE_CD);
   alloc(s);
@@ -168,10 +182,14 @@ function step(s, allowOffer) {
   for (const cur of ["food", "wood", "stone", "favor"]) {
     const p = prodOf(s, cur);
     if (p > 0) {
+      if (cur === "favor") { grantFavor(s, p * DT); continue; }
       s[cur] += p * DT;
       s["total" + cur[0].toUpperCase() + cur.slice(1)] += p * DT;
     }
   }
+  if (s.offerings > 0 && s.favor >= favorCap(s)) s.legend += LEGEND_RATE * DT;
+  const fNow = faithOf(s);
+  if (fNow > s.faithSeen) { s.faithSeen = fNow; if (fNow > 1) mark(s, "faith " + fNow); }
   s.food = Math.max(0, s.food - (upkeep(s) + ratsDrain(s)) * DT);
   if (!s.ratsSeen && s.totalFood >= RATS.at) { s.ratsSeen = true; mark(s, "rats in the stores"); }
   /* arrivals are instant; only an offering leaves a gap on the road */
@@ -189,7 +207,7 @@ function step(s, allowOffer) {
 
 /* ---------- run A: the bot that answers ---------- */
 const A = freshSim();
-while (!A.mir.obedience && A.t < 1800) step(A, true);
+while ((!A.mir.obedience || faithOf(A) < 4) && A.t < 1800) step(A, true);
 
 const at = label => { const e = A.events.find(e => e.label === label || e.label.startsWith(label)); return e ? e.t : Infinity; };
 const tVillager = at("villager 1");
@@ -198,6 +216,7 @@ const tHollow   = at("shrineX");
 const tOffer    = at("offering 1");
 const tMiracle  = at("miracle: a good year");
 const tTease    = at("miracle: obedience");
+const tFaith4   = at("faith 4");
 
 /* gaps between events up to the excavation */
 const pre = A.events.filter(e => e.t <= tHollow);
@@ -228,6 +247,7 @@ check("no wall > 180s before the hollow", worstGap <= 180, Math.round(worstGap) 
 check("first offering < 8min",           tOffer < 480,    mm(tOffer));
 check("first miracle 1-4min after turn", tMiracle - tOffer >= 60 && tMiracle - tOffer <= 240, mm(tMiracle) + " (turn +" + Math.round(tMiracle - tOffer) + "s)");
 check("the tithe teased < 12min total",  tTease < 720,    mm(tTease));
+check("faith 4 by bot minute 9",         tFaith4 < 540,   mm(tFaith4));
 check("the wall is the only flat road",  refusedNews.length === 0, refusedNews.map(e => e.label).join(", ") || "nothing new without the offering");
 
 process.exit(fail ? 1 : 0);
