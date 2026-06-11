@@ -143,7 +143,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 /* ============================== content ============================== */
 
 const SAVE_KEY = "tithe-save";
-const SAVE_VER = 6;
+const SAVE_VER = 7;
 
 const CURS = ["food","wood","stone","favor"];
 const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"totalFavor" };
@@ -171,6 +171,7 @@ const BLD = [
   /* act 3 (§7.2): the works list's last tenants — nothing else is ever built */
   { id:"herald", name:"a herald",           flavor:"it walks until it is heard.", cost:{favor:400}, herald:true, show:s=>!!s.proj.ascend },
   { id:"recall", name:"recall the heralds", flavor:"",                            recall:true,      show:s=>s.heraldSeeds>0 },
+  { id:"vigil",  name:"the vigil",          flavor:"",                            vigil:true,       show:s=>!!s.silenceBorn },
 ];
 
 const PROJ = [
@@ -196,6 +197,9 @@ const MIR = [
   { id:"obedience", name:"obedience",   flavor:"no one wonders anymore.",    cost:{favor:150}, done:"granted", eff:{out:"favor", x:2}, show:s=>s.mir.goodyear },
   { id:"quickening",name:"the quickening", flavor:"the cradles are never empty.", cost:{favor:350}, done:"granted", eff:{arrive:0.5, cd:0.5}, show:s=>s.mir.obedience && faithOf(s)>=5 },
   { id:"sign",      name:"a sign",       flavor:"they remember why they kneel.", cost:{favor:220}, rate:1.5, repeat:true, show:s=>s.doubt>0 },
+  /* act 3 (§7.3): the mir slots' new tenants — the war never comes; the silence does */
+  { id:"tongues",   name:"tongues",  flavor:"every door opens from inside.", cost:{favor:1200}, done:"granted", act:3, show:s=>!!s.proj.ascend && s.worlds>=8 },
+  { id:"hush",      name:"the hush", flavor:"it has nowhere left to stand.", cost:{favor:2500}, done:"granted", act:3, hush:true, show:s=>s.silenceT>=90 },
 ];
 
 /* the one unprompted aside in the whole game: once, for sixty seconds, never again */
@@ -245,6 +249,8 @@ const WORLD    = { base:40, rate:1.6 };// herald-seconds for world i: base x rat
 const SOUL     = { base:1e6, rate:3 }; // souls on conversion: base x rate^i x sky mult
 const SKY_MULT = 1000;                 // each sky multiplies souls and favor alike
 const REAP_RATE = 0.8;                 // favor/s per tithed world at full reap
+const SILENCE  = { born:5, every:40, mult:2 }; // born at the fifth world; dims one light per 40s; a dim world costs x2
+const VIGIL_RATE = 8;                  // favor/s x 1000^g while the vigil is held
 const CAP_HUT  = 2;
 const OFFLINE_CAP_S = 3600;
 const FIG_MAX  = 24;
@@ -280,6 +286,7 @@ function fresh() {
     legend:0, deeper:0, doubt:0, doubtT:0, signs:0, slider:0.5, aside:false, asideLeft:0,
     heralds:0, heraldSeeds:0, heraldSpent:0, worlds:0, worldProg:0, souls:0, galaxy:0,
     tithedLine:0, vigil:false, universes:1, endState:0,
+    silenceBorn:false, silenceT:0, faint:0, dimT:0,
     seen:{},
   };
 }
@@ -310,6 +317,7 @@ function migrate(raw) {
   if (s.jobs.p > fa) s.jobs.p = fa;
   /* v4 -> v5: the doubt era (signs, the aside) — new fields arrive with their defaults */
   /* v5 -> v6: the board (act 3) — heralds, worlds, souls arrive the same way */
+  /* v6 -> v7: the silence (m7) — faint lights and the vigil's clock, defaults again */
   s.v = SAVE_VER;
   return s;
 }
@@ -422,7 +430,8 @@ const jobCapOf = j => j === "p" ? faithOf() : Infinity;
 /* law 15 — a threshold, not a gradient: below half the stock, doubt is only a tax */
 const stalled = () => S.proj.tithe && S.doubt > 0 && S.doubt * 2 >= S.pop;
 /* the sign's ladder: half again, each time (the only repeatable miracle) */
-const mirCost = def => def.repeat ? { favor: Math.ceil(def.cost.favor * Math.pow(def.rate, S.signs)) } : def.cost;
+const mirCost = def => def.repeat ? { favor: Math.ceil(def.cost.favor * Math.pow(def.rate, S.signs)) }
+  : def.hush ? { favor: def.cost.favor * Math.pow(SKY_MULT, S.galaxy) } : def.cost;
 
 /* act 3 (§7): the board's arithmetic — serial worlds, replicating heralds */
 const heraldCost = () => ({ favor: Math.ceil(HERALD.cost * Math.pow(HERALD.rate, S.heraldSeeds)) });
@@ -430,6 +439,10 @@ const worldNeed  = i => WORLD.base * Math.pow(WORLD.rate, i);
 const worldSouls = i => SOUL.base * Math.pow(SOUL.rate, i) * Math.pow(SKY_MULT, S.galaxy);
 /* each tithed world pays for attention; the slider's right share is the asking */
 const reapRate = () => S.proj.ascend ? S.worlds * REAP_RATE * Math.pow(SKY_MULT, S.galaxy) * S.slider : 0;
+/* the silence (§7.3): the vigil's asking, the hush's term, the tongues' doubling */
+const vigilCost  = () => VIGIL_RATE * Math.pow(SKY_MULT, S.galaxy);
+const hushActive = () => S.mir.hush === S.galaxy + 1;  /* the hush is bought per sky */
+const convMult   = () => S.mir.tongues ? 2 : 1;
 
 /* molt 2: one slider decides, the rows report. fields hands feed first;
    whoever the larder spares tends the cradles; the shrine takes the rest,
@@ -600,7 +613,8 @@ function villageScene() {
   let stars = null;
   if (S.proj.ascend) stars = FIELDG.stars.map((st, i) => ({
     col: st.col, row: st.row,
-    state: i < S.worlds ? "red" : "lit",  /* faint waits on the silence (m7) */
+    /* the silence stands between the red wall and the next light (§7.3) */
+    state: i < S.worlds ? "red" : i < S.worlds + S.faint ? "faint" : "lit",
   }));
 
   return { g: glowT(), r: redT(), dark: !!S.proj.ascend, builds, figures, flecks, smoke, walker, stars };
@@ -820,6 +834,7 @@ function fixJobs() {
 function buyBld(def) {
   if (def.herald) return buyHerald();
   if (def.recall) return recallHeralds();
+  if (def.vigil) { S.vigil = !S.vigil; render(); save(); return; }  /* a toggle, not a purchase */
   if (S.proj.tithe) return;  /* molt 2: nothing more is built by hand */
   if (def.max && S.bld[def.id] >= def.max) return;
   const c = bldCost(def);
@@ -873,8 +888,9 @@ function buyMir(def) {
     applyTithe(); render(); save();
     return;
   }
-  if (S.mir[def.id] || !canAfford(c)) return;
-  pay(c); S.mir[def.id] = true;
+  /* the hush expires with its sky (§7.3) — it can be asked for again under the next one */
+  if ((def.hush ? hushActive() : S.mir[def.id]) || !canAfford(c)) return;
+  pay(c); S.mir[def.id] = def.hush ? S.galaxy + 1 : true;
   render(); save();
 }
 
@@ -1073,6 +1089,11 @@ function render() {
       /* the column reads what comes back: 100% of the seed cost (law 14) */
       setText(r.co, S.heraldSeeds > 0 ? costText({ favor: S.heraldSpent }) : "");
       r.btn.disabled = S.heraldSeeds < 1;
+    } else if (r.kind === "bld" && def.vigil) {
+      /* §7.3: the price is per second; the count column says whether it is being paid */
+      setText(r.ct, S.vigil ? "held" : "");
+      setText(r.co, hushActive() ? "" : fmt(vigilCost()) + " favor/s");
+      r.btn.disabled = false;
     } else if (r.kind === "bld") {
       const atMax = def.max && S.bld[def.id] >= def.max;
       const c = bldCost(def);
@@ -1083,7 +1104,7 @@ function render() {
       if (S.bld[def.id] > 0) setText(r.tease, effLine(def));
       r.wrap.classList.toggle("ghost", !!S.proj.ascend);  /* molt 3: the works go dark */
     } else {
-      const done = r.kind === "proj" ? S.proj[def.id] : S.mir[def.id];
+      const done = r.kind === "proj" ? S.proj[def.id] : (def.hush ? hushActive() : S.mir[def.id]);
       /* wood and stone died at molt 2: anything still priced in them is stranded */
       const dead = r.kind === "proj" && S.proj.tithe && !done && def.cost && !!(def.cost.wood || def.cost.stone);
       const c = r.kind === "mir" ? mirCost(def) : def.cost;
@@ -1096,8 +1117,8 @@ function render() {
       /* the early works fold into one line; the congregation folds the same way */
       if (r.kind === "proj" && def.act === 1) r.wrap.classList.toggle("hidden", !!S.proj.tithe);
       if (r.kind === "proj" && def.act === 2) r.wrap.classList.toggle("hidden", !!S.proj.ascend);
-      /* molt 3: the miracles blank; act 3's arrive in the same slots */
-      if (r.kind === "mir") r.wrap.classList.toggle("ghost", !!S.proj.ascend);
+      /* molt 3: the old miracles blank; act 3's arrive lit in the same list */
+      if (r.kind === "mir") r.wrap.classList.toggle("ghost", !!S.proj.ascend && def.act !== 3);
     }
   }
 
@@ -1185,12 +1206,33 @@ function tick() {
     if (S.heralds > 0 && sp > 0) {
       S.heralds = Math.min(HERALD.cap, S.heralds + HERALD.grow * S.heralds * sp * dt);
       if (S.worlds < WORLDS_PER_SKY) {
-        S.worldProg += S.heralds * sp * dt;
-        while (S.worlds < WORLDS_PER_SKY && S.worldProg >= worldNeed(S.worlds)) {
-          S.worldProg -= worldNeed(S.worlds);
+        S.worldProg += S.heralds * sp * dt * convMult();
+        /* a dimmed world costs double — a stall, never a loss (§7.1) */
+        while (S.worlds < WORLDS_PER_SKY &&
+               S.worldProg >= worldNeed(S.worlds) * (S.faint > 0 ? SILENCE.mult : 1)) {
+          S.worldProg -= worldNeed(S.worlds) * (S.faint > 0 ? SILENCE.mult : 1);
           S.souls += worldSouls(S.worlds);
           S.worlds++;  /* the star turns red on the same render */
+          if (S.faint > 0) S.faint--;  /* relit by being taken */
         }
+      }
+    }
+    /* §7.3: born at the fifth world — one light goes faint between two renders. no text. */
+    if (!S.silenceBorn && S.worlds >= SILENCE.born) {
+      S.silenceBorn = true; S.dimT = 0;
+      S.faint = Math.min(1, WORLDS_PER_SKY - S.worlds);
+    }
+    if (S.silenceBorn) {
+      S.silenceT += dt;
+      const vc = hushActive() ? 0 : vigilCost() * dt;
+      if (S.vigil && S.favor >= vc) { S.favor -= vc; S.dimT = 0; }  /* held: zero losses */
+      else {
+        if (S.vigil) S.vigil = false;  /* the treasury starves and the vigil lapses */
+        S.dimT += dt;
+        while (S.dimT >= SILENCE.every && S.faint < WORLDS_PER_SKY - S.worlds) {
+          S.dimT -= SILENCE.every; S.faint++;
+        }
+        if (S.faint >= WORLDS_PER_SKY - S.worlds) S.dimT = 0;  /* nothing left to take */
       }
     }
   }
@@ -1274,9 +1316,9 @@ window.__tithe = {
   JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, ANCHORS, SITES, PAL,
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE, DOUBT_S, ASIDE,
-  TITHED_S, HERALD, WORLDS_PER_SKY, WORLD, SOUL, SKY_MULT, REAP_RATE,
+  TITHED_S, HERALD, WORLDS_PER_SKY, WORLD, SOUL, SKY_MULT, REAP_RATE, SILENCE, VIGIL_RATE,
   buyBld, buyProj, buyMir, doOffering, fixJobs, ascend, buyHerald, recallHeralds,
-  heraldCost, worldNeed, worldSouls, reapRate,
+  heraldCost, worldNeed, worldSouls, reapRate, vigilCost, hushActive, convMult,
   faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate, stalled, mirCost,
   jobRate, prodOf, rateOf, upkeep, ratsDrain, totalProd, cap, idle, arriveAt, offerYield,
   bldCost, canAfford, costText, surgeMult, capS, clickPower, mirArrive, jobArrive, projArrive, arriveCdS, projOutMult, effLine,

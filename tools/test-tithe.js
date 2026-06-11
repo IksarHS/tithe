@@ -326,7 +326,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const G3 = boot(st2).window.__tithe;
   ok(G3.state.offerings === 0 && G3.state.turn1 === false && typeof G3.state.mir === "object",
     "a stripped save walks in with defaults");
-  ok(G3.state.v === 6, "version restamped");
+  ok(G3.state.v === 7, "version restamped");
 }
 {
   const st3 = { "tithe-save": "{broken" };
@@ -369,7 +369,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const stV = { "tithe-save": JSON.stringify(sv) };
   const GV = boot(stV).window.__tithe;
   ok(near(GV.state.surgeLeft, 30, 1.5), "a v1 stamp converts to seconds owed");
-  ok(GV.state.v === 6, "and leaves restamped");
+  ok(GV.state.v === 7, "and leaves restamped");
 }
 
 /* ---------- rats in the granary ---------- */
@@ -427,7 +427,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(GB.state.pop === 10, "the flock fits the huts");
   const JB = GB.state.jobs;
   ok(JB.f + JB.w + JB.m + JB.p <= GB.state.pop, "the jobs table follows the head count");
-  ok(GB.state.v === 6, "restamped v6");
+  ok(GB.state.v === 7, "restamped v7");
 }
 
 /* ---------- the spine: faith is born at the turn ---------- */
@@ -514,7 +514,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const GM = boot(stM).window.__tithe;
   ok(GM.state.favor === 400, "favor folds back under the cap (faith 2)");
   ok(GM.state.jobs.p === 2, "the priests fit the faith");
-  ok(GM.state.v === 6 && GM.state.universes === 1, "restamped v6; one universe, as always");
+  ok(GM.state.v === 7 && GM.state.universes === 1, "restamped v7; one universe, as always");
 }
 
 /* ---------- the cultivator: arrivals, not the larder ---------- */
@@ -874,7 +874,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
 
   /* an old save learns the new fields */
   const mg = GH.migrate({ v:4, turn1:true, pop:4, bld:{hut:2}, deeper:2 });
-  ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === 6,
+  ok(mg.signs === 0 && mg.aside === false && mg.doubt === 0 && mg.v === 7,
     "an old save learns the new fields at their defaults");
 }
 
@@ -1172,7 +1172,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
 
   /* an old save learns the board's fields */
   const mgA = GA.migrate({ v:5, turn1:true, pop:4, bld:{hut:2} });
-  ok(mgA.heraldSeeds === 0 && mgA.worldProg === 0 && mgA.tithedLine === 0 && mgA.v === 6,
+  ok(mgA.heraldSeeds === 0 && mgA.worldProg === 0 && mgA.tithedLine === 0 && mgA.v === 7,
     "a v5 save learns the board at its defaults");
 
   /* the spelled suffixes (§7.1) */
@@ -1197,6 +1197,143 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(dP.getElementById("sendL").textContent === "fields" &&
      dP.getElementById("sendR").textContent === "shrine",
     "the dial keeps its old ends");
+  ok(!dP.getElementById("bld-vigil") && !dP.getElementById("mir-tongues") &&
+     !dP.getElementById("mir-hush"),
+    "no vigil, no tongues, no hush before the door");
+}
+
+/* ---------- the silence and the vigil: the rival nothing-god ---------- */
+
+{
+  const stS = {};
+  const wS = boot(stS).window, dS = wS.document, GS = wS.__tithe, SS = GS.state;
+  /* the same dead village, five worlds short of the visitor */
+  SS.proj.fire = true; SS.proj.tools = true; SS.proj.rats = true; SS.proj.shrineX = true;
+  SS.proj.temple = true; SS.proj.tithe = true; SS.proj.songs = true; SS.proj.calendar = true;
+  SS.proj.lights = true; SS.proj.ascend = true;
+  SS.mir.goodyear = true; SS.mir.obedience = true;
+  SS.bld.hut = 5; SS.bld.farm = 3; SS.bld.quarry = 1; SS.bld.sawpit = 1; SS.bld.granary = 1;
+  SS.turn1 = true; SS.offerings = 21; SS.nameIdx = 22; SS.deeper = 4;
+  SS.totalFavor = 3000; SS.pop = 2; SS.jobs = { f:0, w:0, m:0, p:0, c:0 };
+  SS.favor = 500; SS.food = 6000; SS.legend = 12; SS.slider = 0; SS.tithedLine = 0;
+  const tk = s => { SS.last = Date.now() - (s ? s * 1000 : 1); GS.tick(); };
+  tk();            /* reveals fire while two stragglers stand */
+  SS.pop = 0; tk(); /* then the village is empty, as the door left it */
+
+  /* four worlds in: no silence, no vigil */
+  SS.heralds = 1; SS.heraldSeeds = 1; SS.heraldSpent = 400; SS.seen.heraldT = 1;
+  SS.worlds = 4; SS.worldProg = 262; SS.souls = 0;
+  ok(!SS.silenceBorn && !dS.getElementById("bld-vigil"),
+    "before the fifth world, no one keeps watch");
+
+  /* born at the fifth, honest to the digit (§7.3) */
+  tk(1);  /* 262 + 1.02 herald-seconds crosses worldNeed(4) = 262.144 */
+  ok(SS.worlds === 5 && SS.silenceBorn === true && SS.faint === 1,
+    "born at the fifth world, honest to the digit");
+  let scS = GS.villageScene();
+  ok(scS.stars[5].state === "faint" &&
+     scS.stars.filter(st => st.state === "faint").length === 1,
+    "one unconverted light goes faint between two renders");
+  ok(dS.getElementById("popLine").textContent === "worlds 5 / 14 · souls 81m",
+    "and no text announces it");
+  const vigBtn = dS.getElementById("bld-vigil");
+  ok(!!vigBtn && vigBtn.querySelector(".nm").textContent === "the vigil" &&
+     vigBtn.querySelector(".co").textContent === "8 favor/s",
+    "the vigil appears with the silence, price per second");
+  ok(vigBtn.querySelector(".ct").textContent === "", "and no one holds it yet");
+  ok(!dS.getElementById("mir-hush"), "the hush is not yet conceivable");
+
+  /* unheld: one light per forty seconds (the birth tick paid its own dt in) */
+  SS.dimT = 0;
+  tk(40);
+  ok(SS.faint === 2, "unheld, it dims one light each forty seconds");
+  tk(39);
+  ok(SS.faint === 2 && near(SS.dimT, 39, 0.1), "thirty-nine seconds is not forty");
+  tk(1);
+  ok(SS.faint === 3 && SS.worlds === 5, "forty is");
+  scS = GS.villageScene();
+  ok(scS.stars.slice(5, 8).every(st => st.state === "faint"),
+    "the dark stands between the wall and the next light");
+  ok(scS.stars.slice(0, 5).every(st => st.state === "red"),
+    "it never touches a tithed world");
+
+  /* the vigil holds; the treasury pays */
+  SS.favor = 100;
+  vigBtn.click();
+  ok(SS.vigil === true && vigBtn.querySelector(".ct").textContent === "held",
+    "the vigil is held");
+  tk(10);
+  ok(near(SS.favor, 20, 0.01) && SS.faint === 3 && SS.dimT === 0,
+    "held: eight favor a second, zero losses");
+  tk(10);
+  ok(SS.vigil === false && near(SS.favor, 20, 0.01) && near(SS.dimT, 10, 0.1),
+    "the treasury starves and the vigil lapses");
+  ok(vigBtn.querySelector(".ct").textContent === "", "no hand on it now");
+
+  /* a dimmed world costs double — a stall, never a loss (§7.1) */
+  SS.heralds = 1; SS.worldProg = 838;  /* worldNeed(5) x 2 = 838.86 */
+  tk(1);
+  ok(SS.worlds === 6 && SS.faint === 2,
+    "a dimmed world costs double — and is relit by being taken");
+  scS = GS.villageScene();
+  ok(scS.stars[5].state === "red" && scS.stars[6].state === "faint",
+    "the wall advances one light");
+
+  /* with every light dim, the clock has nothing to count */
+  SS.faint = 8; SS.dimT = 0;  /* all eight unconverted, taken */
+  tk(50);
+  ok(SS.faint === 8 && SS.dimT === 0, "with every light dim the clock stops at the rim");
+
+  /* tongues (§7.3): the eighth world earns the doubling */
+  ok(!dS.getElementById("mir-tongues"), "tongues is not yet earned at six worlds");
+  SS.worlds = 8; SS.faint = 0; SS.dimT = 0; SS.worldProg = 0; SS.favor = 2000;
+  tk();
+  const tonBtn = dS.getElementById("mir-tongues");
+  ok(!!tonBtn && !tonBtn.parentElement.classList.contains("ghost"),
+    "tongues arrives lit among the blanked slots");
+  ok(tonBtn.querySelector(".co").textContent === "1.2k favor", "twelve hundred favor");
+  ok(tonBtn.parentElement.querySelector(".tease").textContent === "every door opens from inside.",
+    "and says its one line");
+  tonBtn.click();
+  ok(SS.mir.tongues === true && near(SS.favor, 800, 0.01) &&
+     tonBtn.querySelector(".co").textContent === "granted",
+    "every door opens from inside");
+  SS.heralds = 1; SS.worldProg = 0;
+  tk(10);
+  ok(near(SS.worldProg, 24, 0.1), "the heralds convert at twice the pace");
+
+  /* the hush (§7.3): ninety seconds of the silence, then a way out */
+  const hushBtn = dS.getElementById("mir-hush");
+  ok(!!hushBtn && hushBtn.querySelector(".co").textContent === "2.5k favor",
+    "ninety seconds of it, and the hush can be asked for");
+  SS.favor = 3000; GS.render();  /* the wallet must be seen before the button unlocks */
+  hushBtn.click();
+  ok(SS.mir.hush === 1 && GS.hushActive() === true &&
+     hushBtn.querySelector(".co").textContent === "granted",
+    "the hush knows which sky bought it");
+  ok(vigBtn.querySelector(".co").textContent === "", "the vigil's price column empties");
+  vigBtn.click();
+  tk(10);
+  ok(SS.vigil === true && near(SS.favor, 500, 0.01) && SS.faint === 0,
+    "held for nothing, this sky");
+
+  /* the silence survives a reload */
+  wS.dispatchEvent(new wS.Event("beforeunload"));
+  const wS2 = boot(stS).window, dS2 = wS2.document, GS2 = wS2.__tithe;
+  ok(GS2.state.silenceBorn === true && GS2.state.mir.hush === 1 &&
+     GS2.state.vigil === true && GS2.state.faint === 0,
+    "reload: the silence is remembered");
+  ok(dS2.getElementById("bld-vigil").querySelector(".ct").textContent === "held" &&
+     dS2.getElementById("bld-vigil").querySelector(".co").textContent === "",
+    "reload: still held, still free");
+  ok(dS2.getElementById("mir-tongues").querySelector(".co").textContent === "granted",
+    "reload: the doors stay open");
+
+  /* a v6 save meets the silence at its defaults */
+  const mgS = GS2.migrate({ v:6, turn1:true, worlds:7, proj:{ ascend:true } });
+  ok(mgS.silenceBorn === false && mgS.faint === 0 && mgS.silenceT === 0 &&
+     mgS.dimT === 0 && mgS.v === 7,
+    "a v6 save meets the silence at its defaults");
 }
 
 /* ---------- the road is seen: a pending arrival walks in from the treeline ---------- */
