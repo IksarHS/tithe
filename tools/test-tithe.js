@@ -405,8 +405,9 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   SX.proj.fire = true; SX.bld.hut = 5; SX.wood = 9999;
   SX.last = Date.now() - 100; GX.tick();
   const hb = dX.getElementById("bld-hut");
-  ok(hb.disabled, "five huts: the row goes quiet");
-  ok(hb.querySelector(".co").textContent === "", "no sixth price is quoted");
+  /* v3: five huts is not the end of the row — it is the row's second life */
+  ok(hb.querySelector(".nm").textContent === "longhouse", "five huts: the row transmutes, not retires");
+  ok(hb.querySelector(".co").textContent === "45 wood + 12 stone", "the sixth price is the first depth");
   ok(hb.nextElementSibling.textContent === "room for 10", "the rate line holds the total");
   hb.click();
   ok(SX.bld.hut === 5, "clicking buys nothing past the anchors");
@@ -557,7 +558,9 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(SG2.bld.granary === 1 && SG2.wood === 0 && SG2.stone === 0, "the granary takes its price");
   ok(GG2.capS() === 8 * 3600, "the night holds eight hours now");
   ok(gBtn.nextElementSibling.textContent === "away · 8 h", "the granary states its work");
-  ok(gBtn.disabled && gBtn.querySelector(".co").textContent === "", "one granary; no second is quoted");
+  ok(gBtn.querySelector(".nm").textContent === "high loft" &&
+     gBtn.querySelector(".co").textContent === "160 wood + 80 stone",
+    "one granary; the row now offers the loft");
   ok(GG2.villageScene().builds.some(b => b.sprite === "granary" && b.col === GG2.ANCHORS.granary.col),
     "it stands in the meadow's last open run");
 }
@@ -1908,25 +1911,31 @@ ok(JSON.stringify(G.genVillage(123)) !== JSON.stringify(G.genVillage(124)), "a d
   S1.proj.tools = true;
   ok(G1.clickPower() === 1, "flint sharpens the trades, never the hand");
 
-  /* the level rows reveal in the works column and deepen at their anchors */
-  S1.proj.fire = true; S1.bld.hut = 2; S1.bld.farm = 1; S1.pop = 4; S1.jobs.f = 1;
+  /* below full anchors the hut row is just the hut row */
+  S1.proj.fire = true; S1.bld.hut = 4; S1.bld.farm = 1; S1.pop = 4; S1.jobs.f = 1;
   S1.last = Date.now() - 1; G1.tick();
-  const lh = d1.getElementById("lvl-longhouse");
-  ok(!!lh, "the longhouse is offered at two huts");
-  ok(lh.querySelector(".co").textContent === "45 wood + 12 stone", "and names its first price");
-  ok(G1.cap() === 4, "before: room for four");
+  const hutBtn = d1.getElementById("bld-hut");
+  ok(hutBtn.querySelector(".nm").textContent === "hut", "four anchors: still a hut row");
+  /* at full anchors the SAME ROW transmutes — no new row is ever placed */
+  S1.bld.hut = 5;
+  S1.last = Date.now() - 1; G1.tick();
+  ok(hutBtn.querySelector(".nm").textContent === "longhouse",
+    "five anchors: the hut row becomes the longhouse row");
+  ok(hutBtn.querySelector(".co").textContent === "45 wood + 12 stone", "and names its first price");
+  ok(G1.cap() === 10, "before: room for ten");
   S1.wood = 45; S1.stone = 12; S1.last = Date.now() - 1; G1.tick();
-  lh.click();
+  hutBtn.click();
   ok(S1.lvl.longhouse === 1 && S1.wood === 0 && S1.stone === 0, "the first longhouse is raised");
-  ok(G1.cap() === 6, "room for two more — the anchor held, the building deepened");
-  ok(lh.querySelector(".ct").textContent === "1", "the count column carries the depth");
-  ok(lh.querySelector(".co").textContent === "57 wood + 15 stone", "the next rung costs a quarter again");
-  ok(lh.parentElement.querySelector(".tease").textContent === "room for +2", "the tease reads the standing depth");
+  ok(G1.cap() === 12, "room for two more — the anchor held, the building deepened");
+  ok(hutBtn.querySelector(".ct").textContent === "1", "the count column carries the depth");
+  ok(hutBtn.querySelector(".co").textContent === "57 wood + 15 stone", "the next rung costs a quarter again");
+  ok(hutBtn.parentElement.querySelector(".tease").textContent === "room for 12",
+    "the tease reads the whole truth — anchors and depth in one line");
   G1.buyLvl(G1.LVL.find(l => l.id === "longhouse"));
   ok(S1.lvl.longhouse === 1, "an empty wallet buys nothing");
 
   /* terraces pump the foragers — a level is a multiplier, not a sprite */
-  S1.proj.tools = true; S1.bld.farm = 2;
+  S1.bld.farm = 2;
   const f0 = G1.jobRate("f");
   S1.lvl.terraces = 2;
   ok(near(G1.jobRate("f") / f0, 1 + 0.25 * 2, 0.001),
@@ -1987,10 +1996,12 @@ ok(JSON.stringify(G.genVillage(123)) !== JSON.stringify(G.genVillage(124)), "a d
   S4.proj.fire = true; S4.proj.tools = true; S4.bld.hut = 2; S4.bld.farm = 1; S4.bld.sawpit = 1;
   S4.bld.quarry = 1; S4.pop = 4; S4.wood = 999; S4.stone = 999;
   S4.last = Date.now() - 1; G4.tick();
-  ok(!!d4.getElementById("lvl-longsaw"), "the saw can deepen before the molt");
+  const ls = d4.getElementById("bld-sawpit");
+  ok(ls.querySelector(".nm").textContent === "long saw" &&
+     ls.querySelector(".co").textContent === "75 wood + 15 stone",
+    "one anchor is already full: the sawpit row offers the saw");
   S4.proj.tithe = true; S4.turn1 = true; S4.offerings = 1; S4.slider = 0.5;
   S4.last = Date.now() - 1; G4.tick();
-  const ls = d4.getElementById("lvl-longsaw");
   ok(ls.disabled && ls.querySelector(".co").textContent === "",
     "molt 2 freezes the depths: counts remain, costs vanish");
   const n0 = S4.lvl.longsaw;

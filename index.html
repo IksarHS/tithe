@@ -6,16 +6,21 @@
 <title>tithe</title>
 <style>
 :root{
-  --bg:#0e0d0b; --ink:#c8c0b2; --dim:#7a7468; --faint:#5c564a;
-  --line:#262219; --blood:#a14034;
+  --bg:#16140f; --ink:#e2dac9; --dim:#a39b88; --faint:#7d7666;
+  --line:#3d362a; --blood:#a14034;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
+html{font-size:16px}
 body{
   margin:0; background:var(--bg); color:var(--ink);
-  font:13px/1.45 Consolas,"Cascadia Mono","DejaVu Sans Mono",monospace;
+  font:.875rem/1.5 Consolas,"Cascadia Mono","DejaVu Sans Mono",monospace;
   overflow:hidden;
 }
+/* the one-screen law outranks everything: short windows densify, whole-cloth */
+@media (max-height:1080px){html{font-size:14.3px}}
+@media (max-height:980px){html{font-size:13.2px}}
+@media (max-height:800px){html{font-size:12px}}
 #app{display:grid; grid-template-rows:1fr 32vh; height:100vh}
 #work{
   padding:.6rem 1.2rem 0; position:relative; overflow:hidden;
@@ -30,12 +35,12 @@ h1{font-size:.95rem; font-weight:normal; letter-spacing:.45em; margin:0}
 #uniLine:not(:empty){margin-right:1.6em}
 h2{
   font-size:.72rem; font-weight:normal; letter-spacing:.18em; color:var(--dim);
-  margin:.65rem 0 .35rem; padding-bottom:.3rem; border-bottom:1px solid var(--line);
+  margin:.5rem 0 .3rem; padding-bottom:.25rem; border-bottom:1px solid var(--line);
 }
 button{
   font:inherit; color:var(--ink); background:none; border:1px solid var(--line);
   display:block; width:100%; max-width:21rem; min-height:2.75rem;
-  padding:.4rem .7rem; margin:.2rem 0; text-align:left; cursor:pointer;
+  padding:.35rem .7rem; margin:.15rem 0; text-align:left; cursor:pointer;
 }
 button:hover:not(:disabled){border-color:var(--dim)}
 button:disabled{color:var(--faint); cursor:default}
@@ -49,12 +54,12 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 .store{display:flex; justify-content:space-between; max-width:21rem; margin:.15rem 0}
 .store .val{font-weight:bold}
 .rate{color:var(--dim); margin-left:.55em; font-weight:normal}
-.tease{color:var(--dim); max-width:21rem; margin:0 0 .2rem; min-height:1.2em}
+.tease{color:var(--dim); max-width:21rem; margin:0 0 .15rem; min-height:1.15em}
 .gen{display:flex; justify-content:space-between; gap:1.6rem; align-items:baseline}
 .gen .nm{flex:1}
 .gen .ct{color:var(--ink)}
 .gen .co{color:var(--dim); white-space:nowrap}
-.job{display:flex; align-items:center; gap:.55rem; max-width:21rem; margin:.25rem 0}
+.job{display:flex; align-items:center; gap:.55rem; max-width:21rem; margin:.2rem 0}
 .job .jname{flex:1}
 .job .jn{min-width:2ch; text-align:right; font-weight:bold}
 .job .jb{
@@ -178,27 +183,24 @@ const BLD = [
   { id:"vigil",  name:"the vigil",          flavor:"",                            vigil:true,       show:s=>!!s.silenceBorn },
 ];
 
-/* v3 (A1): the anchors hold; the buildings deepen. every level pumps an act-1 job —
-   the late rungs are priced in stone and favor, act 2 reaching back into act 1 */
+/* v3 (A1): the anchors hold; the buildings deepen. no new rows — when a
+   building's anchors max out, ITS OWN ROW transmutes into the level ladder
+   (the hut row becomes the longhouse row). every level pumps an act-1 job;
+   the late rungs are priced in stone and favor — act 2 reaching back */
 const LVL = [
-  { id:"longhouse", bld:"hut",     name:"longhouse", flavor:"room for two more.", eff:{cap:2},
-    max:s=>s.bld.hut, cost:n=>({ wood:Math.ceil(45*Math.pow(1.25,n)), stone:Math.ceil(12*Math.pow(1.25,n)) }),
-    show:s=>s.bld.hut>=2 && s.bld.farm>=1 },
-  { id:"terraces",  bld:"farm",    name:"terraces",  flavor:"", eff:{job:"f", per:0.25},
+  { id:"longhouse", bld:"hut",     name:"longhouse", eff:{cap:2},
+    max:s=>s.bld.hut, cost:n=>({ wood:Math.ceil(45*Math.pow(1.25,n)), stone:Math.ceil(12*Math.pow(1.25,n)) }) },
+  { id:"terraces",  bld:"farm",    name:"terraces",  eff:{job:"f", per:0.25},
     max:s=>s.bld.farm*2, cost:n=>(n>=3 ? { wood:Math.ceil(55*Math.pow(1.6,n)), stone:20 }
-                                       : { wood:Math.ceil(55*Math.pow(1.6,n)) }),
-    show:s=>s.bld.farm>=1 && !!s.proj.tools },
-  { id:"longsaw",   bld:"sawpit",  name:"long saw",  flavor:"", eff:{job:"w", per:0.8},
-    max:s=>s.bld.sawpit*3, cost:n=>[{wood:75,stone:15},{wood:190,stone:45},{wood:420,stone:80,favor:40}][n],
-    show:s=>s.bld.sawpit>=1 },
-  { id:"deepadit",  bld:"quarry",  name:"deep adit", flavor:"", eff:{job:"m", per:0.6},
-    max:s=>s.bld.quarry*3, cost:n=>[{wood:130},{wood:280,stone:40},{wood:600,favor:60}][n],
-    show:s=>s.bld.quarry>=1 && !!s.proj.tools },
-  { id:"highloft",  bld:"granary", name:"high loft", flavor:"", eff:{offline:16},
-    max:s=>s.bld.granary, cost:n=>({ wood:160, stone:80 }),
-    show:s=>s.bld.granary>=1 },
+                                       : { wood:Math.ceil(55*Math.pow(1.6,n)) }) },
+  { id:"longsaw",   bld:"sawpit",  name:"long saw",  eff:{job:"w", per:0.8},
+    max:s=>s.bld.sawpit*3, cost:n=>[{wood:75,stone:15},{wood:190,stone:45},{wood:420,stone:80,favor:40}][n] },
+  { id:"deepadit",  bld:"quarry",  name:"deep adit", eff:{job:"m", per:0.6},
+    max:s=>s.bld.quarry*3, cost:n=>[{wood:130},{wood:280,stone:40},{wood:600,favor:60}][n] },
+  { id:"highloft",  bld:"granary", name:"high loft", eff:{offline:16},
+    max:s=>s.bld.granary, cost:n=>({ wood:160, stone:80 }) },
 ];
-LVL.forEach(l => { l.lvlRow = true; });
+const lvlFor = bldId => LVL.find(l => l.bld === bldId);
 
 const PROJ = [
   { id:"fire",    name:"a fire",             flavor:"the cold backs off a step.",  cost:{wood:10},           done:"lit",  show:s=>s.totalWood>=6, act:1 },
@@ -741,15 +743,15 @@ const mix = (a, b, t) => {
 };
 
 const PAL = {
-  skyLo:"#12100d", skyHi:"#2e2a21", skyRed:"#26110c",
-  hillLo:"#171410", hillHi:"#27211a", hillRed:"#241510",
-  meadowLo:"#1d1a15", meadowHi:"#322b1f", meadowRed:"#2a1a13",
-  treeLo:"#1b2114", treeHi:"#2a321f", trunk:"#16140f",
-  rock:"#2c2822", rockHi:"#363026",
-  buildLo:"#3a3329", buildHi:"#574c3a",
-  fig:"#cfc5b2", figP:"#a14034",
-  fire:"#e8d4a4", ember:"#8a6a40", smoke:"#7f7a6c", fleck:"#a14034",
-  star:"#5a5345", starLit:"#8d8470", starFaint:"#363128", hollow:"#060504",
+  skyLo:"#201c16", skyHi:"#403a2c", skyRed:"#301710",
+  hillLo:"#262019", hillHi:"#352c22", hillRed:"#2c1a13",
+  meadowLo:"#2c261d", meadowHi:"#443a28", meadowRed:"#332016",
+  treeLo:"#28301d", treeHi:"#39442a", trunk:"#211d15",
+  rock:"#3c362d", rockHi:"#4a4234",
+  buildLo:"#4c4435", buildHi:"#6e6049",
+  fig:"#e0d6c1", figP:"#a14034",
+  fire:"#f0dcab", ember:"#9c7848", smoke:"#8d8779", fleck:"#a14034",
+  star:"#6c6452", starLit:"#a59b84", starFaint:"#453e32", hollow:"#080605",
 };
 
 let paintKey = "";
@@ -920,7 +922,6 @@ function makeRow(def, kind) {
   rowNodes[kind + "-" + def.id] = { wrap, btn, nm, ct, co, tease, def, kind };
   btn.addEventListener("click", () => {
     if (kind === "bld") buyBld(def);
-    else if (kind === "lvl") buyLvl(def);
     else if (kind === "proj") buyProj(def);
     else if (kind === "mir") buyMir(def);
   });
@@ -944,7 +945,12 @@ function buyBld(def) {
   if (def.vigil) { if (S.quiet >= 1) return;  /* §8: lapsed for good */
     S.vigil = !S.vigil; render(); save(); return; }  /* a toggle, not a purchase */
   if (S.proj.tithe) return;  /* molt 2: nothing more is built by hand */
-  if (def.max && S.bld[def.id] >= def.max) return;
+  if (def.max && S.bld[def.id] >= def.max) {
+    /* the anchors are full: the same button now deepens the building */
+    const lv = lvlFor(def.id);
+    if (lv) return buyLvl(lv);
+    return;
+  }
   const c = bldCost(def);
   if (!canAfford(c)) return;
   pay(c); S.bld[def.id]++;
@@ -1171,14 +1177,6 @@ function checkReveals() {
       if (booted && isNew) rowNodes["bld-"+def.id].btn.classList.add("reveal");
     }
   }
-  for (const def of LVL) {
-    if (!rowNodes["lvl-"+def.id] && (S.seen["ll:"+def.id] || def.show(S))) {
-      const isNew = !S.seen["ll:"+def.id];
-      els["bldList"].appendChild(makeRow(def, "lvl"));
-      S.seen["ll:"+def.id] = 1;
-      if (booted && isNew) rowNodes["lvl-"+def.id].btn.classList.add("reveal");
-    }
-  }
   for (const def of MIR) {
     if (!rowNodes["mir-"+def.id] && (S.seen["mm:"+def.id] || def.show(S))) {
       const isNew = !S.seen["mm:"+def.id];
@@ -1202,20 +1200,16 @@ let lastSpreadW = -1;
 function effLine(def) {
   const e = def.eff || {};
   const trim = n => n.toFixed(2).replace(/0$/, "").replace(/\.0$/, "");
-  /* v3: a level row reads its standing depth, not the anchor count */
-  if (def.lvlRow) {
-    const n = S.lvl[def.id] || 0;
-    if (e.cap)     return "room for +" + (n * e.cap);
-    if (e.job)     return JOBS.find(x => x.id === e.job).name + "s ×" + trim(1 + e.per * n);
-    if (e.offline) return "away · " + Math.round(e.offline * OFFLINE_CAP_S / 3600) + " h";
-    return "";
-  }
-  if (e.cap)     return "room for " + (S.bld[def.id] * e.cap);
-  if (e.job)     return JOBS.find(x => x.id === e.job).name + "s ×" + trim(1 + e.per * S.bld[def.id]);
+  /* v3: a deepened building reads its WHOLE truth — anchors and levels in one line */
+  const lv = def.sprite ? lvlFor(def.id) : null;
+  const ln = lv ? (S.lvl[lv.id] || 0) : 0;
+  if (e.cap)     return "room for " + (S.bld[def.id] * e.cap + ln * (lv && lv.eff.cap || 0));
+  if (e.job)     return JOBS.find(x => x.id === e.job).name + "s ×" +
+    trim((1 + e.per * S.bld[def.id]) * (lv && lv.eff.job ? 1 + lv.eff.per * ln : 1));
   if (e.allJobs) return "hands ×" + trim(e.allJobs);
   if (e.out)     return e.out + " ×" + e.x;
   if (e.arrive)  return "arrivals ×" + trim(1 / e.arrive);
-  if (e.offline) return "away · " + e.offline + " h";
+  if (e.offline) return "away · " + (ln > 0 && lv && lv.eff.offline ? lv.eff.offline : e.offline) + " h";
   if (e.decimal) return "to the tenth";
   return "";
 }
@@ -1342,22 +1336,27 @@ function render() {
       r.btn.disabled = S.quiet !== def.quiet - 1;
     } else if (r.kind === "bld") {
       const atMax = def.max && S.bld[def.id] >= def.max;
-      const c = bldCost(def);
-      setText(r.ct, S.bld[def.id] > 0 ? String(S.bld[def.id]) : "");
-      /* molt 2 freezes the works: counts remain, costs vanish */
-      setText(r.co, (atMax || S.proj.tithe) ? "" : costText(c));
-      r.btn.disabled = atMax || !!S.proj.tithe || !canAfford(c);
+      const lv = lvlFor(def.id);
+      const ln = lv ? (S.lvl[lv.id] || 0) : 0;
+      /* v3 (A1): at full anchors the row transmutes in place — the same button
+         now deepens the building; the count column carries the depth */
+      const deep = atMax && lv && ln < lv.max(S);
+      if (atMax && lv && (deep || ln > 0)) {
+        if (!S.seen["lt:" + lv.id]) { S.seen["lt:" + lv.id] = 1; if (booted) r.btn.classList.add("reveal"); }
+        setText(r.nm, lv.name);
+        setText(r.ct, ln > 0 ? String(ln) : "");
+        setText(r.co, (!deep || S.proj.tithe) ? "" : costText(lv.cost(ln)));
+        r.btn.disabled = !deep || !!S.proj.tithe || !canAfford(lv.cost(ln));
+      } else {
+        const c = bldCost(def);
+        setText(r.nm, def.name);
+        setText(r.ct, S.bld[def.id] > 0 ? String(S.bld[def.id]) : "");
+        /* molt 2 freezes the works: counts remain, costs vanish */
+        setText(r.co, (atMax || S.proj.tithe) ? "" : costText(c));
+        r.btn.disabled = atMax || !!S.proj.tithe || !canAfford(c);
+      }
       if (S.bld[def.id] > 0) setText(r.tease, effLine(def));
       r.wrap.classList.toggle("ghost", !!S.proj.ascend);  /* molt 3: the works go dark */
-    } else if (r.kind === "lvl") {
-      /* v3 (A1): depth at the same anchor — count column carries the level */
-      const n = S.lvl[def.id] || 0, atMax = n >= def.max(S);
-      const c = atMax ? null : def.cost(n);
-      setText(r.ct, n > 0 ? String(n) : "");
-      setText(r.co, (atMax || S.proj.tithe) ? "" : costText(c));
-      r.btn.disabled = atMax || !!S.proj.tithe || !canAfford(c);
-      if (n > 0) setText(r.tease, effLine(def));
-      r.wrap.classList.toggle("ghost", !!S.proj.ascend);
     } else {
       const done = r.kind === "proj" ? S.proj[def.id] : (def.hush ? hushActive() : S.mir[def.id]);
       /* wood and stone died at molt 2: anything still priced in them is stranded */

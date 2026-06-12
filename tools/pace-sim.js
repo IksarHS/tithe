@@ -220,11 +220,13 @@ const SHOW = {
     obedience:  s => !!s.mir.goodyear,
     quickening: s => !!s.mir.obedience && faithOf(s) >= 5,
   },
+  /* v3: a level is on offer only when its building's ANCHORS are full —
+     the building's own row transmutes; no new rows exist */
   lvl: {
-    longhouse: s => s.bld.hut >= 2 && s.bld.farm >= 1,
-    terraces:  s => s.bld.farm >= 1 && !!s.proj.tools,
+    longhouse: s => s.bld.hut >= BLD.hut.max,
+    terraces:  s => s.bld.farm >= BLD.farm.max,
     longsaw:   s => s.bld.sawpit >= 1,
-    deepadit:  s => s.bld.quarry >= 1 && !!s.proj.tools,
+    deepadit:  s => s.bld.quarry >= 1,
     highloft:  s => s.bld.granary >= 1,
   },
 };
