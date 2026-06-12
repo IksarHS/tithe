@@ -146,7 +146,7 @@ button:focus-visible{outline:1px solid var(--dim); outline-offset:2px}
 
 const SAVE_KEY = "tithe-save";
 const U_KEY    = "tithe-universe";      /* tracked since first install (law 21) — it survives the wipe */
-const SAVE_VER = 9;
+const SAVE_VER = 10;
 
 const CURS = ["food","wood","stone","favor"];
 const TOT  = { food:"totalFood", wood:"totalWood", stone:"totalStone", favor:"totalFavor" };
@@ -159,18 +159,18 @@ const ACTS = [
 
 const JOBS = [
   { id:"f", name:"forager",    base:0.5,  out:"food",  show:s=>s.pop>0 },
-  { id:"w", name:"woodcutter", base:0.35, out:"wood",  show:s=>s.pop>0 },
-  { id:"m", name:"mason",      base:0.25, out:"stone", show:s=>s.bld.quarry>0 },
+  { id:"w", name:"woodcutter", base:0.6,  out:"wood",  show:s=>s.pop>0 },
+  { id:"m", name:"mason",      base:0.4,  out:"stone", show:s=>s.bld.quarry>0 },
   { id:"p", name:"priest",     base:0.2,  out:"favor", eats:2, show:s=>s.turn1 },
   { id:"c", name:"cultivator", base:0,    out:null,    eff:{arrive:0.85}, show:s=>s.mir.goodyear },
 ];
 
 /* max = field anchors: the ledger may never outgrow the picture */
 const BLD = [
-  { id:"hut",    name:"hut",    flavor:"room for two.",                 cost:{wood:12}, rate:1.3,  max:5, eff:{cap:2},               show:s=>s.proj.fire,    sprite:"hut" },
+  { id:"hut",    name:"hut",    flavor:"room for two.",                 cost:{wood:12}, rate:1.25, max:5, eff:{cap:2},               show:s=>s.proj.fire,    sprite:"hut" },
   { id:"farm",   name:"farm",   flavor:"rows in the dirt.",             cost:{wood:25}, rate:1.18, max:3, eff:{job:"f", per:0.25},   show:s=>s.pop>=2,       sprite:"farm" },
   { id:"quarry", name:"quarry", flavor:"the hill opens.",               cost:{wood:60}, rate:1.18, max:1, eff:{job:"m", per:0.25},   show:s=>s.bld.farm>=1,  sprite:"adit" },
-  { id:"sawpit", name:"sawpit", flavor:"the logs come apart.",          cost:{wood:50,stone:15}, rate:1.18, max:1, eff:{job:"w", per:0.25}, show:s=>s.bld.quarry>=1, sprite:"sawpit" },
+  { id:"sawpit", name:"sawpit", flavor:"the logs come apart.",          cost:{wood:36,stone:10}, rate:1.18, max:1, eff:{job:"w", per:0.25}, show:s=>s.bld.quarry>=1, sprite:"sawpit" },
   { id:"granary",name:"granary",flavor:"the winter gets smaller.",      cost:{wood:80,stone:40}, rate:1.18, max:1, eff:{offline:8},           show:s=>s.turn1,        sprite:"granary" },
   /* act 3 (§7.2): the works list's last tenants — nothing else is ever built */
   { id:"herald", name:"a herald",           flavor:"it walks until it is heard.", cost:{favor:400}, herald:true, show:s=>!!s.proj.ascend },
@@ -178,13 +178,35 @@ const BLD = [
   { id:"vigil",  name:"the vigil",          flavor:"",                            vigil:true,       show:s=>!!s.silenceBorn },
 ];
 
+/* v3 (A1): the anchors hold; the buildings deepen. every level pumps an act-1 job —
+   the late rungs are priced in stone and favor, act 2 reaching back into act 1 */
+const LVL = [
+  { id:"longhouse", bld:"hut",     name:"longhouse", flavor:"room for two more.", eff:{cap:2},
+    max:s=>s.bld.hut, cost:n=>({ wood:Math.ceil(45*Math.pow(1.25,n)), stone:Math.ceil(12*Math.pow(1.25,n)) }),
+    show:s=>s.bld.hut>=2 && s.bld.farm>=1 },
+  { id:"terraces",  bld:"farm",    name:"terraces",  flavor:"", eff:{job:"f", per:0.25},
+    max:s=>s.bld.farm*2, cost:n=>(n>=3 ? { wood:Math.ceil(55*Math.pow(1.6,n)), stone:20 }
+                                       : { wood:Math.ceil(55*Math.pow(1.6,n)) }),
+    show:s=>s.bld.farm>=1 && !!s.proj.tools },
+  { id:"longsaw",   bld:"sawpit",  name:"long saw",  flavor:"", eff:{job:"w", per:0.8},
+    max:s=>s.bld.sawpit*3, cost:n=>[{wood:75,stone:15},{wood:190,stone:45},{wood:420,stone:80,favor:40}][n],
+    show:s=>s.bld.sawpit>=1 },
+  { id:"deepadit",  bld:"quarry",  name:"deep adit", flavor:"", eff:{job:"m", per:0.6},
+    max:s=>s.bld.quarry*3, cost:n=>[{wood:130},{wood:280,stone:40},{wood:600,favor:60}][n],
+    show:s=>s.bld.quarry>=1 && !!s.proj.tools },
+  { id:"highloft",  bld:"granary", name:"high loft", flavor:"", eff:{offline:16},
+    max:s=>s.bld.granary, cost:n=>({ wood:160, stone:80 }),
+    show:s=>s.bld.granary>=1 },
+];
+LVL.forEach(l => { l.lvlRow = true; });
+
 const PROJ = [
   { id:"fire",    name:"a fire",             flavor:"the cold backs off a step.",  cost:{wood:10},           done:"lit",  show:s=>s.totalWood>=6, act:1 },
   { id:"tools",   name:"stone tools",        flavor:"flint edges.",                cost:{wood:30,stone:10},  done:"made", show:s=>s.totalStone>=3, eff:{allJobs:1.5}, act:1 },
-  { id:"rats",    name:"rats in the stores", flavor:s=>nameAt(s.ratsIdx)+" sits up with a stick.", cost:{wood:60}, done:"kept", show:s=>s.totalFood>=120, act:1 },
-  { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:90,wood:60}, done:"open", show:s=>s.totalStone>=70, act:1 },
-  { id:"temple",  name:"the temple",         flavor:"the hollow learns its name.", cost:{stone:120,wood:80,favor:150}, done:"raised", eff:{out:"favor",x:2}, show:s=>faithOf(s)>=4, act:2 },
-  { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:{favor:250,food:60,wood:80,stone:30}, done:"standing", show:s=>s.mir.obedience, act:2 },
+  { id:"rats",    name:"rats in the stores", flavor:s=>nameAt(s.ratsIdx)+" sits up with a stick.", cost:{wood:60}, done:"kept", show:s=>s.totalFood>=200, act:1 },
+  { id:"shrineX", name:"excavate the hollow",flavor:"the quarry breaks into a hollow. something is already there.", cost:{stone:180,wood:60}, done:"open", show:s=>s.totalStone>=130, act:1 },
+  { id:"temple",  name:"the temple",         flavor:"the hollow learns its name.", cost:{stone:120,wood:80,favor:400}, done:"raised", eff:{out:"favor",x:2}, show:s=>faithOf(s)>=4, act:2 },
+  { id:"tithe",   name:"the tithe",          flavor:"the flock could give without being asked.", cost:{favor:900,food:60,wood:80,stone:30}, done:"standing", show:s=>s.mir.obedience, act:2 },
   { id:"songs",   name:"the songs",          flavor:"they sing what they cannot say.", cost:{legend:20}, done:"sung",    eff:{out:"favor",x:1.5}, show:s=>s.legend>0, act:2 },
   { id:"calendar",name:"a calendar",         flavor:"the days get names.",             cost:{legend:45}, done:"named",   eff:{arrive:0.8},        show:s=>s.proj.songs, act:2 },
   { id:"count",   name:"the count",          flavor:"every head, every hand.",         cost:{legend:90}, done:"counted", eff:{decimal:true},      show:s=>s.proj.calendar, act:2 },
@@ -278,7 +300,7 @@ const SPREAD_W = [
 ];
 
 const UPKEEP   = 0.25;                 // food/s per villager; priests eat double
-const ARRIVE   = { base:15, rate:1.3 };// food stock that draws the next villager
+const ARRIVE   = { base:15, rate:1.2 };// food stock that draws the next villager (v3: pop 20 stays reachable)
 const ARRIVE_CD = 20;                  // seconds before a replacement, after an offering — the absence must be seen
 const LEAVE_S  = 20;                   // seconds at zero food before one walks away
 const SURGE    = { x:8, s:90 };        // the offering's gift — it feeds the fields, never the shrine
@@ -289,6 +311,7 @@ const FAITH_MAX = 13;                  // 1 at the turn + 8 gates + 4 deeper off
 const FAVOR_CAP_PER = 200;             // favor cap = 200 x faith — the cap is itself a forecast
 const LEGEND_RATE = 0.3;               // /s, only while favor rests at its cap
 const DOUBT_S  = 90;                   // seconds between doubts, while any remain — heresy compounds
+const OUTGROWN = { rate:8, hold:10, mult:3 };  // v3: the moment the village outgrows the hand — wood prod 8/s held 10s, jobs 3x the clicks
 /* act 3 — the board (§7): worlds bought in herald-seconds, paid out in souls */
 const TITHED_S = 60;                   // the stamp: sixty seconds of epitaph, then the board
 const HERALD   = { cost:400, rate:1.25, grow:0.02, cap:144 };
@@ -331,6 +354,8 @@ function fresh() {
     totalFood:0, totalWood:0, totalStone:0, totalFavor:0,
     pop:0, jobs:{f:0,w:0,m:0,p:0,c:0},
     bld:{hut:0,farm:0,quarry:0,sawpit:0,granary:0},
+    lvl:{longhouse:0,terraces:0,longsaw:0,deepadit:0,highloft:0},
+    clickFood:0, clickWood:0, jobFood:0, jobWood:0, outT:0,
     proj:{}, mir:{},
     offerings:0, nameIdx:0, surgeLeft:0, arriveCd:0, ratsIdx:-1, turn1:false, glowLock:0,
     starveT:0, clicks:0, walkPhase:0, smokePhase:0,
@@ -350,9 +375,11 @@ function migrate(raw) {
   }
   for (const k of Object.keys(f.jobs)) if (typeof s.jobs[k] !== "number") s.jobs[k] = 0;
   for (const k of Object.keys(f.bld))  if (typeof s.bld[k]  !== "number") s.bld[k]  = 0;
+  /* v9 -> v10: the buildings learn to deepen; the hand's ledger arrives at zero */
+  for (const k of Object.keys(f.lvl))  if (typeof s.lvl[k]  !== "number") s.lvl[k]  = 0;
   /* v2 -> v3: works are capped at their anchors; the ledger may not outgrow the picture */
   for (const b of BLD) if (b.max && s.bld[b.id] > b.max) s.bld[b.id] = b.max;
-  const popCap = s.bld.hut * CAP_HUT;
+  const popCap = s.bld.hut * CAP_HUT + (s.lvl.longhouse || 0) * 2;
   if (s.pop > popCap) s.pop = popCap;
   while (s.jobs.f + s.jobs.w + s.jobs.m + s.jobs.p + s.jobs.c > s.pop) {
     let big = "f";
@@ -439,7 +466,8 @@ const uMult = () => Math.pow(NGPLUS, (S.universes || 1) - 1);
 const mirMult = out => MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.out===out ? u.eff.x : 1), 1);
 const projAllJobs = () => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff.allJobs ? p.eff.allJobs : 1), 1);
 const projOutMult = out => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff.out===out ? p.eff.x : 1), 1);
-const bldJobMult = j => BLD.reduce((m,b)=> m * (b.eff && b.eff.job===j ? 1 + b.eff.per*(S.bld[b.id]||0) : 1), 1);
+const bldJobMult = j => BLD.reduce((m,b)=> m * (b.eff && b.eff.job===j ? 1 + b.eff.per*(S.bld[b.id]||0) : 1), 1)
+  * LVL.reduce((m,l)=> m * (l.eff && l.eff.job===j ? 1 + l.eff.per*(S.lvl[l.id]||0) : 1), 1);
 
 const jobRate = (j, surge) => {
   const def = JOBS.find(x=>x.id===j);
@@ -456,7 +484,7 @@ const ratsDrain = () => (S.seen["pp:rats"] && !S.proj.rats) ? RATS_DRAIN : 0;
 const rateOf = cur => prodOf(cur) - (cur==="food" ? upkeep() + ratsDrain() : 0);
 const totalProd = () => prodOf("food") + prodOf("wood") + prodOf("stone");
 
-const cap = () => S.bld.hut * CAP_HUT;
+const cap = () => S.bld.hut * CAP_HUT + (S.lvl.longhouse || 0) * 2;
 const idle = () => S.pop - S.jobs.f - S.jobs.w - S.jobs.m - S.jobs.p - S.jobs.c;
 const mirArrive = () => MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.arrive ? u.eff.arrive : 1), 1);
 const jobArrive = () => JOBS.reduce((m,j)=> m * (j.eff && j.eff.arrive ? Math.pow(j.eff.arrive, S.jobs[j.id]) : 1), 1);
@@ -464,8 +492,8 @@ const projArrive = () => PROJ.reduce((m,p)=> m * (S.proj[p.id] && p.eff && p.eff
 const arriveAt = () => ARRIVE.base * Math.pow(ARRIVE.rate, S.pop) * mirArrive() * jobArrive() * projArrive();
 const arriveCdS = () => ARRIVE_CD * MIR.reduce((m,u)=> m * (S.mir[u.id] && u.eff && u.eff.cd ? u.eff.cd : 1), 1);
 const offerYield = () => OFFER.base * Math.pow(OFFER.rate, S.offerings);
-const capS = () => S.bld.granary > 0 ? 8 * OFFLINE_CAP_S : OFFLINE_CAP_S;
-const clickPower = () => (S.proj.tools ? 2 : 1) * uMult();  /* flint fits the hand; the hand still loses to the village */
+const capS = () => S.lvl.highloft > 0 ? 16 * OFFLINE_CAP_S : S.bld.granary > 0 ? 8 * OFFLINE_CAP_S : OFFLINE_CAP_S;
+const clickPower = () => 1;  /* v3: the hand is a bootstrap, not a career — the village wins by minute four */
 const moodWord = () => { let m = ""; for (const x of MOOD) if (x.when(S)) m = x.word; return m; };
 
 /* the spine: faith is derived, never stored — the flock's regard, measured in what it has already given */
@@ -615,7 +643,7 @@ function villageScene() {
   if (S.bld.granary > 0) builds.push({ sprite:"granary", col:ANCHORS.granary.col, row:ANCHORS.granary.row });
   /* molt 3: the fire is out — the hearth stays, the flame does not */
   if (S.proj.fire) builds.push({ sprite:S.proj.ascend ? "ember" : "fire", col:ANCHORS.fire.col, row:ANCHORS.fire.row });
-  const hollow = !S.proj.shrineX && (S.seen["p:shrineX"] || S.totalStone >= 70);
+  const hollow = !S.proj.shrineX && (S.seen["p:shrineX"] || S.totalStone >= 130);
   if (hollow) builds.push({ sprite:"hollow", col:ANCHORS.hollow.col, row:ANCHORS.hollow.row });
   /* the shrine grows in place: one anchor, three lives — hollow, shrine, temple.
      §8: the quietings walk it back down the same ladder */
@@ -892,6 +920,7 @@ function makeRow(def, kind) {
   rowNodes[kind + "-" + def.id] = { wrap, btn, nm, ct, co, tease, def, kind };
   btn.addEventListener("click", () => {
     if (kind === "bld") buyBld(def);
+    else if (kind === "lvl") buyLvl(def);
     else if (kind === "proj") buyProj(def);
     else if (kind === "mir") buyMir(def);
   });
@@ -919,6 +948,16 @@ function buyBld(def) {
   const c = bldCost(def);
   if (!canAfford(c)) return;
   pay(c); S.bld[def.id]++;
+  render(); save();
+}
+/* v3 (A1): a level deepens the building at its anchor — the count is capped, the depth is not (until the molt) */
+function buyLvl(def) {
+  if (S.proj.tithe) return;  /* molt 2 freezes the works, depth included */
+  const n = S.lvl[def.id] || 0;
+  if (n >= def.max(S)) return;
+  const c = def.cost(n);
+  if (!c || !canAfford(c)) return;
+  pay(c); S.lvl[def.id] = n + 1;
   render(); save();
 }
 function buyProj(def) {
@@ -1072,6 +1111,8 @@ function doAct(a) {
   if (a.die && a.die(S)) return;  /* the verb is dead */
   S[a.cur] += clickPower();
   S[TOT[a.cur]] += clickPower();
+  if (a.cur === "food") S.clickFood += clickPower();
+  else if (a.cur === "wood") S.clickWood += clickPower();
   S.clicks++;
   if (S.proj.fire) S.smokePhase += 0.5;
   S.walkPhase += 0.15;
@@ -1119,7 +1160,7 @@ function checkReveals() {
       S.seen["pp:"+def.id] = 1;
       if (booted && isNew) rowNodes["proj-"+def.id].btn.classList.add("reveal");
     }
-    if (def.id === "shrineX" && (S.totalStone >= 70 || S.seen["pp:shrineX"])) S.seen["p:shrineX"] = 1;
+    if (def.id === "shrineX" && (S.totalStone >= 130 || S.seen["pp:shrineX"])) S.seen["p:shrineX"] = 1;
   }
   for (const def of BLD) {
     if (!rowNodes["bld-"+def.id] && (S.seen["bb:"+def.id] || def.show(S))) {
@@ -1128,6 +1169,14 @@ function checkReveals() {
       els["bldList"].appendChild(makeRow(def, "bld"));
       S.seen["bb:"+def.id] = 1;
       if (booted && isNew) rowNodes["bld-"+def.id].btn.classList.add("reveal");
+    }
+  }
+  for (const def of LVL) {
+    if (!rowNodes["lvl-"+def.id] && (S.seen["ll:"+def.id] || def.show(S))) {
+      const isNew = !S.seen["ll:"+def.id];
+      els["bldList"].appendChild(makeRow(def, "lvl"));
+      S.seen["ll:"+def.id] = 1;
+      if (booted && isNew) rowNodes["lvl-"+def.id].btn.classList.add("reveal");
     }
   }
   for (const def of MIR) {
@@ -1153,6 +1202,14 @@ let lastSpreadW = -1;
 function effLine(def) {
   const e = def.eff || {};
   const trim = n => n.toFixed(2).replace(/0$/, "").replace(/\.0$/, "");
+  /* v3: a level row reads its standing depth, not the anchor count */
+  if (def.lvlRow) {
+    const n = S.lvl[def.id] || 0;
+    if (e.cap)     return "room for +" + (n * e.cap);
+    if (e.job)     return JOBS.find(x => x.id === e.job).name + "s ×" + trim(1 + e.per * n);
+    if (e.offline) return "away · " + Math.round(e.offline * OFFLINE_CAP_S / 3600) + " h";
+    return "";
+  }
   if (e.cap)     return "room for " + (S.bld[def.id] * e.cap);
   if (e.job)     return JOBS.find(x => x.id === e.job).name + "s ×" + trim(1 + e.per * S.bld[def.id]);
   if (e.allJobs) return "hands ×" + trim(e.allJobs);
@@ -1197,9 +1254,13 @@ function render() {
   setText(els["act-wood"], lex("act-wood"));
   /* §8: the gathering — N names in taken order, then the hill's one sentence */
   els["act-berries"].disabled = S.quiet >= 5 && S.gather >= S.offerings;
-  setText(els["actTease"], S.quiet < 5 ? ""
-    : S.gather >= S.offerings ? GATHER.end
-    : S.gather > 0 ? GATHER.line(gatherName(S.gather - 1)) : "");
+  /* v3: once outgrown, the verbs' own slot reads the number that beat them */
+  setText(els["actTease"], S.quiet >= 5
+    ? (S.gather >= S.offerings ? GATHER.end
+       : S.gather > 0 ? GATHER.line(gatherName(S.gather - 1)) : "")
+    : (S.seen["outgrown"] && !S.proj.tithe)
+    ? "the village · " + fmtRate(prodOf("food")) + " food · " + fmtRate(prodOf("wood")) + " wood"
+    : "");
   setText(els["h-village"], lex("h-village"));
   setText(els["h-shrine"], lex("h-shrine"));
   let pl;
@@ -1288,6 +1349,15 @@ function render() {
       r.btn.disabled = atMax || !!S.proj.tithe || !canAfford(c);
       if (S.bld[def.id] > 0) setText(r.tease, effLine(def));
       r.wrap.classList.toggle("ghost", !!S.proj.ascend);  /* molt 3: the works go dark */
+    } else if (r.kind === "lvl") {
+      /* v3 (A1): depth at the same anchor — count column carries the level */
+      const n = S.lvl[def.id] || 0, atMax = n >= def.max(S);
+      const c = atMax ? null : def.cost(n);
+      setText(r.ct, n > 0 ? String(n) : "");
+      setText(r.co, (atMax || S.proj.tithe) ? "" : costText(c));
+      r.btn.disabled = atMax || !!S.proj.tithe || !canAfford(c);
+      if (n > 0) setText(r.tease, effLine(def));
+      r.wrap.classList.toggle("ghost", !!S.proj.ascend);
     } else {
       const done = r.kind === "proj" ? S.proj[def.id] : (def.hush ? hushActive() : S.mir[def.id]);
       /* wood and stone died at molt 2: anything still priced in them is stranded */
@@ -1377,8 +1447,18 @@ function tick() {
       : (sDt > 0 ? prodOf(cur, true) * sDt : 0) + prodOf(cur, false) * (dt - sDt);
     if (gain > 0) {
       if (cur === "favor") grantFavor(gain);
-      else { S[cur] += gain; S[TOT[cur]] += gain; }
+      else {
+        S[cur] += gain; S[TOT[cur]] += gain;
+        if (cur === "food") S.jobFood += gain;
+        else if (cur === "wood") S.jobWood += gain;
+      }
     }
+  }
+  /* v3: the moment the village outgrows the hand — held rate, earned ratio, marked once */
+  if (!S.seen["outgrown"] && !S.proj.tithe) {
+    if (prodOf("wood") >= OUTGROWN.rate) S.outT += dt; else S.outT = 0;
+    if (S.outT >= OUTGROWN.hold && S.jobWood >= OUTGROWN.mult * Math.max(1, S.clickWood))
+      S.seen["outgrown"] = 1;
   }
   /* heresy compounds: while any doubt remains, one more every ninety seconds */
   if (S.doubt > 0) {
@@ -1515,12 +1595,12 @@ setInterval(save, 10000);
 window.__tithe = {
   get state() { return S; },
   tick, render, save, migrate, fresh,
-  JOBS, BLD, PROJ, MIR, NAMES, LEX, SPREAD, SPREAD_W, MOOD, ANCHORS, SITES, PAL,
+  JOBS, BLD, LVL, PROJ, MIR, NAMES, LEX, SPREAD, SPREAD_W, MOOD, ANCHORS, SITES, PAL, OUTGROWN,
   UPKEEP, ARRIVE, ARRIVE_CD, SURGE, OFFER, LEAVE_S, RATS_DRAIN,
   FAITH_GATES, FAITH_MAX, FAVOR_CAP_PER, LEGEND_RATE, DOUBT_S, ASIDE,
   TITHED_S, HERALD, WORLDS_PER_SKY, WORLD, SOUL, SKY_MULT, REAP_RATE, SILENCE, VIGIL_RATE, SKY_DOOR,
   VOICE_S, NGPLUS, SAVE_VER,
-  buyBld, buyProj, buyMir, doOffering, fixJobs, ascend, buyHerald, recallHeralds, openSky, takeLastStar,
+  buyBld, buyLvl, buyProj, buyMir, doOffering, fixJobs, ascend, buyHerald, recallHeralds, openSky, takeLastStar,
   doHunger, uMult, doStarve, doQuiet, doGather, gatherName, GATHER, moodWord,
   heraldCost, worldNeed, worldSouls, reapRate, vigilCost, hushActive, convMult, skyCost,
   faithOf, favorCap, grantFavor, jobCapOf, deriveJobs, applyTithe, congRate, stalled, mirCost,

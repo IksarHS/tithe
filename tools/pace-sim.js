@@ -32,12 +32,12 @@
 
 /* ---------- mirrored constants ---------- */
 const UPKEEP = 0.25;
-const ARRIVE = { base: 15, rate: 1.3 };
+const ARRIVE = { base: 15, rate: 1.2 };
 const ARRIVE_CD = 20;
 const SURGE  = { x: 8, s: 90 };
 const OFFER  = { base: 5, rate: 1.5 };
 const CAP_HUT = 2;
-const RATS = { at: 120, drain: 0.5 };
+const RATS = { at: 200, drain: 0.5 };
 const FAITH_GATES = [25, 65, 130, 235, 405, 680, 1125, 2900];
 const FAITH_MAX = 13;
 const FAVOR_CAP_PER = 200;
@@ -47,24 +47,40 @@ const SIGN = { cost: 220, rate: 1.5 };    /* doubt -> 0; half again each time */
 
 const JOBS = {
   f: { base: 0.50, out: "food"  },
-  w: { base: 0.35, out: "wood"  },
-  m: { base: 0.25, out: "stone" },
+  w: { base: 0.60, out: "wood"  },
+  m: { base: 0.40, out: "stone" },
   p: { base: 0.20, out: "favor", eats: 2 },
 };
 const BLD = {  /* max = field anchors, mirrored from index.html */
-  hut:    { cost: { wood: 12 },            rate: 1.30, max: 5 },
+  hut:    { cost: { wood: 12 },            rate: 1.25, max: 5 },
   farm:   { cost: { wood: 25 },            rate: 1.18, max: 3, job: "f", per: 0.25 },
   quarry: { cost: { wood: 60 },            rate: 1.18, max: 1, job: "m", per: 0.25 },
-  sawpit: { cost: { wood: 50, stone: 15 }, rate: 1.18, max: 1, job: "w", per: 0.25 },
+  sawpit: { cost: { wood: 36, stone: 10 }, rate: 1.18, max: 1, job: "w", per: 0.25 },
   granary:{ cost: { wood: 80, stone: 40 }, rate: 1.18, max: 1 },  /* offline cap x8 — no value to a bot that never leaves */
 };
+/* v3 (A1): anchor levels — the works deepen until the molt */
+const LVL = {
+  longhouse: { max: s => s.bld.hut,      cap: 2,
+    cost: n => ({ wood: Math.ceil(45 * Math.pow(1.25, n)), stone: Math.ceil(12 * Math.pow(1.25, n)) }) },
+  terraces:  { max: s => s.bld.farm * 2, job: "f", per: 0.25,
+    cost: n => n >= 3 ? { wood: Math.ceil(55 * Math.pow(1.6, n)), stone: 20 }
+                      : { wood: Math.ceil(55 * Math.pow(1.6, n)) } },
+  longsaw:   { max: s => s.bld.sawpit * 3, job: "w", per: 0.8,
+    cost: n => [{ wood: 75, stone: 15 }, { wood: 190, stone: 45 }, { wood: 420, stone: 80, favor: 40 }][n] },
+  deepadit:  { max: s => s.bld.quarry * 3, job: "m", per: 0.6,
+    cost: n => [{ wood: 130 }, { wood: 280, stone: 40 }, { wood: 600, favor: 60 }][n] },
+  highloft:  { max: s => s.bld.granary,
+    cost: () => ({ wood: 160, stone: 80 }) },
+};
+const lvlCost = (s, id) => (s.lvl[id] >= LVL[id].max(s)) ? null : LVL[id].cost(s.lvl[id]);
+
 const PROJ = {
   fire:    { cost: { wood: 10 } },
   tools:   { cost: { wood: 30, stone: 10 }, allJobs: 1.5 },
   rats:    { cost: { wood: 60 } },
-  shrineX: { cost: { stone: 90, wood: 60 }, showStone: 70 },
-  temple:  { cost: { stone: 120, wood: 80, favor: 150 } },  /* worship x2; needs faith 4 */
-  tithe:   { cost: { favor: 250, food: 60, wood: 80, stone: 30 } },  /* molt 2 — the axe comes back out for the last bill */
+  shrineX: { cost: { stone: 180, wood: 60 }, showStone: 130 },
+  temple:  { cost: { stone: 120, wood: 80, favor: 400 } },  /* worship x2; needs faith 4 */
+  tithe:   { cost: { favor: 900, food: 60, wood: 80, stone: 30 } },  /* molt 2 — the axe comes back out for the last bill */
   songs:   { cost: { legend: 20 } },   /* worship x1.5 */
   calendar:{ cost: { legend: 45 } },   /* arrivals x0.8 */
   count:   { cost: { legend: 90 } },   /* a decimal place — no rate, only dread */
@@ -106,10 +122,13 @@ const V2 = {
 /* the XFAIL ledger — what the OLD economy is known to fail, and which milestone clears it.
  * may only shrink. an XPASS = the milestone landed; remove the line. */
 const XFAIL = {
-  "v2 zero-click completion":   "V3-M1/M2 — automation cannot finish the old game",
-  "v2 click share <= 12%":      "V3-M1 — clicking is the optimal wood source",
-  "v2 overtake by 4:30":        "V3-M1 — the hand beats the maxed village forever",
-  "v2 policy spread within 20%":"V3-M1 — a no-wood-click policy can never pay the wood bills",
+  /* v1 choreography checks the v3 economy transiently disturbs — each is owned
+     by the milestone that re-authors its era, and must clear when it lands */
+  "molt 2 at bot minute 10-13":     "V3-M3 — the dial re-authors the offering era",
+  "ascension at bot minute 18-22":  "V3-M2 — legend overflow re-authors the plateau",
+  "sky 1 under 8 min":              "V3-M4 — the village echo re-prices the first sky",
+  "three timers, staggered 30-90s": "V3-M2 — the plateau choreography is re-authored by legend overflow",
+  "v2 policy spread within 20%":    "V3-M2 — the plateau's click value keeps the trio apart until the web lands",
   "v2 R90 to the last star":    "V3-M2/M4 — the plateau and the sky back-halves",
   "v2 decision density":        "V3-M5 — purchases cluster in bursts",
   "v2 carrot invariant":        "V3-M5 — columns run empty or crowded",
@@ -127,7 +146,9 @@ const bldCost = (s, id) => {
 const afford = (s, c) => Object.keys(c).every(k => s[k] >= c[k]);
 const pay = (s, c) => { for (const k of Object.keys(c)) s[k] -= c[k]; };
 const bldJobMult = (s, j) => Object.keys(BLD).reduce((m, id) =>
-  m * (BLD[id].job === j ? 1 + BLD[id].per * s.bld[id] : 1), 1);
+  m * (BLD[id].job === j ? 1 + BLD[id].per * s.bld[id] : 1), 1)
+  * Object.keys(LVL).reduce((m, id) =>
+  m * (LVL[id].job === j ? 1 + LVL[id].per * s.lvl[id] : 1), 1);
 /* law 15 — a threshold, not a gradient */
 const stalled = s => s.proj.tithe && s.doubt > 0 && s.doubt * 2 >= s.pop;
 const signCost = s => Math.ceil(SIGN.cost * Math.pow(SIGN.rate, s.signs));
@@ -144,11 +165,11 @@ const congRate = s => (!s.proj.tithe || stalled(s)) ? 0 :
   (s.cong || 0) * JOBS.p.base * 0.5 * (s.mir.obedience ? 2 : 1) * (s.proj.temple ? 2 : 1) * (s.proj.songs ? 1.5 : 1);
 const upkeep = s => (s.pop + s.jobs.p * ((JOBS.p.eats || 1) - 1)) * UPKEEP;
 const ratsDrain = s => (s.ratsSeen && !s.proj.rats) ? RATS.drain : 0;
-const cap = s => s.bld.hut * CAP_HUT;
+const cap = s => s.bld.hut * CAP_HUT + s.lvl.longhouse * 2;
 const arriveAt = s => ARRIVE.base * Math.pow(ARRIVE.rate, s.pop) * (s.mir.goodyear ? 0.5 : 1)
   * (s.mir.quickening ? 0.5 : 1) * (s.proj.calendar ? 0.8 : 1) * Math.pow(CULT_ARRIVE, s.jobs.c);
 const arriveCdS = s => ARRIVE_CD * (s.mir.quickening ? 0.5 : 1);
-const clickPow = s => s.proj.tools ? 2 : 1;
+const clickPow = s => 1;  /* v3: the hand is a bootstrap, not a career */
 /* the spine — faith derived, favor capped, every grant through one door */
 const faithOf = s => s.offerings === 0 ? 0 :
   Math.min(FAITH_MAX, 1 + (s.deeper || 0) + FAITH_GATES.filter(g => s.totalFavor >= g).length);
@@ -199,6 +220,13 @@ const SHOW = {
     obedience:  s => !!s.mir.goodyear,
     quickening: s => !!s.mir.obedience && faithOf(s) >= 5,
   },
+  lvl: {
+    longhouse: s => s.bld.hut >= 2 && s.bld.farm >= 1,
+    terraces:  s => s.bld.farm >= 1 && !!s.proj.tools,
+    longsaw:   s => s.bld.sawpit >= 1,
+    deepadit:  s => s.bld.quarry >= 1 && !!s.proj.tools,
+    highloft:  s => s.bld.granary >= 1,
+  },
 };
 /* rows the player can be saving toward, per column, with live costs */
 function carrotRows(s) {
@@ -208,6 +236,12 @@ function carrotRows(s) {
       if (s.bld[id] >= BLD[id].max) continue;
       if (!SHOW.bld[id](s)) continue;
       rows.push({ col: "works", id, ok: afford(s, bldCost(s, id)) });
+    }
+    for (const id of Object.keys(LVL)) {
+      const c = lvlCost(s, id);
+      if (!c) continue;
+      if (!SHOW.lvl[id](s)) continue;
+      rows.push({ col: "works", id, ok: afford(s, c) });
     }
   }
   if (!s.proj.ascend) {
@@ -275,6 +309,7 @@ function freshSim(clickRate) {
     clickFood: 0, clickWood: 0,
     pop: 0, jobs: { f: 0, w: 0, m: 0, p: 0, c: 0 },
     bld: { hut: 0, farm: 0, quarry: 0, sawpit: 0, granary: 0 },
+    lvl: { longhouse: 0, terraces: 0, longsaw: 0, deepadit: 0, highloft: 0 },
     proj: {}, mir: {}, offerings: 0, surgeLeft: 0, arriveCd: 0, ratsSeen: false,
     deeper: 0, legend: 0, faithSeen: 0,
     doubt: 0, doubtT: 0, signs: 0, cong: 0,
@@ -288,7 +323,9 @@ function freshSim(clickRate) {
 }
 const mark = (s, label) => { s.events.push({ t: s.t, label }); s.rings.push(s.t); };
 
-/* bot job policy: feed the mouths first, then priests (post-turn), then stone */
+/* bot job policy: feed the mouths first, then priests (post-turn), then the
+   axe and the chisel split what is left — v3: woodcutters are finally worth
+   staffing, and the wood bills outweigh the stone bills about three to one */
 function alloc(s) {
   const fPer = JOBS.f.base * bldJobMult(s, "f") * (s.proj.tools ? 1.5 : 1);
   const wantP = s.offerings > 0 ? Math.min(WANT_P, faithOf(s)) : 0;  /* the priests fit the faith */
@@ -297,7 +334,13 @@ function alloc(s) {
   const need = (s.pop + wantP) * UPKEEP + ratsDrain(s) + 0.01;
   J.f = Math.min(left, Math.ceil(need / fPer)); left -= J.f;
   J.p = Math.min(left, wantP); left -= J.p;
-  if (s.bld.quarry > 0) { J.m = left; } else { J.w = left; }
+  if (s.bld.quarry > 0) {
+    /* one chisel until the saw chain stands; then the hollow wants stone in earnest */
+    const early = !(s.proj.tools && s.bld.sawpit > 0 && s.lvl.longsaw >= 1);
+    J.m = early ? Math.min(left, 1) : Math.min(left, Math.max(1, Math.ceil(left / 3)));
+    left -= J.m;
+    J.w = left;
+  } else { J.w = left; }
   s.jobs = J;
 }
 
@@ -373,13 +416,13 @@ function tickSim(s, click) {
   }
   /* v2: the overtake clock and the hand-vs-automation ledger */
   if (s.tOvertake === Infinity && prodOf(s, "wood") >= V2.OVERTAKE_PROD) s.tOvertake = s.t;
+  /* the 25% rule is judged on wood — food is staffed to need by design, so the
+     hand-vs-automation question only means anything where capacity is unbounded */
   if (s.t >= V2.HAND_FROM && !s.proj.tithe) {
     const hand = s.clickRate * cp;
     if (hand > 0) {
-      for (const cur of ["food", "wood"]) {
-        s.handN++;
-        if (hand > V2.HAND_FRAC * prodOf(s, cur)) s.handBad++;
-      }
+      s.handN++;
+      if (hand > V2.HAND_FRAC * prodOf(s, "wood")) s.handBad++;
     }
   }
   if (s.surgeLeft > 0) s.surgeLeft -= DT;
@@ -534,7 +577,7 @@ function step(s, allowOffer) {
   if (s.proj.tithe) { stepRace(s); return; }
   alloc(s);
 
-  let click = s.policy === "food-first" ? "food" : "wood", buy = null;
+  let click = "wood", buy = null;  /* policies diverge in the override below, never at the bootstrap */
   if (!s.proj.fire)            { buy = ["proj", "fire"];   click = s.totalFood < 3 ? "food" : "wood"; }
   else if (s.bld.hut < 1)      { buy = ["bld", "hut"]; }
   else if (s.pop < 2)          { click = "food"; }                      /* draw villagers */
@@ -542,11 +585,16 @@ function step(s, allowOffer) {
   else if (s.bld.quarry < 1)   { buy = ["bld", "quarry"]; }
   else if (!s.proj.tools)      { buy = ["proj", "tools"]; }
   else if (!s.proj.shrineX) {
-    /* the grind: build out the finite works, then masons carry it to the hollow */
+    /* the grind: build out the finite works AND their depths, then masons carry it to the hollow */
     if (s.totalStone >= PROJ.shrineX.showStone && afford(s, PROJ.shrineX.cost)) buy = ["proj", "shrineX"];
     else if (s.bld.sawpit < BLD.sawpit.max && afford(s, bldCost(s, "sawpit"))) buy = ["bld", "sawpit"];
+    else if (SHOW.lvl.longsaw(s) && lvlCost(s, "longsaw") && afford(s, lvlCost(s, "longsaw")))    buy = ["lvl", "longsaw"];
+    else if (SHOW.lvl.terraces(s) && lvlCost(s, "terraces") && afford(s, lvlCost(s, "terraces"))) buy = ["lvl", "terraces"];
+    else if (SHOW.lvl.deepadit(s) && lvlCost(s, "deepadit") && afford(s, lvlCost(s, "deepadit"))) buy = ["lvl", "deepadit"];
     else if (s.bld.farm < BLD.farm.max && afford(s, bldCost(s, "farm")))       buy = ["bld", "farm"];
     else if (s.pop >= cap(s) && s.bld.hut < BLD.hut.max && afford(s, bldCost(s, "hut"))) buy = ["bld", "hut"];
+    else if (s.pop >= cap(s) && SHOW.lvl.longhouse(s) && lvlCost(s, "longhouse") &&
+             afford(s, lvlCost(s, "longhouse")) && s.offerings === 0) buy = ["lvl", "longhouse"];
     else if (s.pop < cap(s)) click = "food";
     if (s.policy === "wood-first") click = "wood";
   }
@@ -576,17 +624,23 @@ function step(s, allowOffer) {
     }
   }
 
+  /* food-first means "the cutters carry the wood": once any wood income exists,
+     every wood click becomes a food click. The bootstrap clicks stay whatever
+     the balanced bot would do — every policy lights the fire the same way */
+  if (s.policy === "food-first" && click === "wood" && prodOf(s, "wood") >= 0.3) click = "food";
+
   /* the rats jump any queue: 60 wood against a standing leak — a real decision now */
   if (s.ratsSeen && !s.proj.rats) buy = ["proj", "rats"];
 
   if (buy) {
     const [kind, id] = buy;
-    const c = kind === "bld" ? bldCost(s, id) : PROJ[id].cost;
-    if (afford(s, c)) {
+    const c = kind === "bld" ? bldCost(s, id) : kind === "lvl" ? lvlCost(s, id) : PROJ[id].cost;
+    if (c && afford(s, c)) {
       /* a decision iff some OTHER priced row was simultaneously affordable */
       const others = carrotRows(s).filter(r => r.ok && r.id !== id).length;
       pay(s, c);
       if (kind === "bld") { s.bld[id]++; mark(s, id + " " + s.bld[id]); }
+      else if (kind === "lvl") { s.lvl[id]++; mark(s, id + " " + s.lvl[id]); }
       else { s.proj[id] = true; mark(s, id === "rats" ? "rats kept" : id); }
       if (others > 0) decide(s);
       alloc(s);

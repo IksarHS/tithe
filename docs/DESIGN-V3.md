@@ -95,6 +95,22 @@ CAP_HUT 2 unchanged; each longhouse +2 → cap 20 at full build.
   own row displays the number that beat it. New counters
   `S.clickWood/S.jobWood/S.clickFood/S.jobFood`.
 
+### 1.6 sim-settled deltas (M1 — the sim decides finals)
+- woodcutter base **0.6** (not 0.5); priest stays **0.2** — the M2 web, not the
+  base, is what makes priests matter; 0.25 compressed both act windows.
+- hut rate **1.25**; sawpit **36w + 10s**; long saw per **+0.8**/level, costs
+  **75w+15s · 190w+45s · 420w+80s+40 favor**.
+- rats arrive at **200** total food (120 blocked the early build-out).
+- the hollow shows at **130** total stone and costs **180 stone + 60 wood**
+  (the act-1 finale must outlast the stronger masons).
+- the temple's favor term **400**; the tithe's **900** (pre-molt favor is
+  tight on purpose — a currency, not a surplus).
+- measured at M1: overtake 4:05, click share 3% of the worst currency, the
+  hand never beats automation after 4:00, bot Z finishes the game without
+  clicking past the turn. Act-2/act-3 windows ledgered to their owners
+  (M2: ascension + staggering + policy spread; M3: the molt window;
+  M4: sky 1).
+
 ---
 
 ## 2. the interconnection matrix

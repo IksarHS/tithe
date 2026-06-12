@@ -149,27 +149,27 @@ const toolsBtn = d.getElementById("proj-tools");
 ok(!!toolsBtn, "stone tools teased once stone is real");
 S().wood = 30; S().stone = 10; ff(0.001); toolsBtn.click();
 ok(S().proj.tools === true, "flint edges");
-ok(near(G.jobRate("m"), 0.25 * 1.25 * 1.5), "tools sharpen every trade");
+ok(near(G.jobRate("m"), 0.4 * 1.25 * 1.5), "tools sharpen every trade");
 ok(toolsBtn.nextElementSibling.textContent === "hands ×1.5", "flint states its work");
 {
   const fBefore = S().food;
   d.getElementById("act-berries").click();
-  ok(near(S().food, fBefore + 2), "flint fits the hand: one click grants two");
+  ok(near(S().food, fBefore + 1), "v3: the flint sharpens the trades, never the hand — one click is one");
 }
 
 /* ---------- the hollow ---------- */
 
 sc = G.villageScene();
 ok(!sc.builds.some(b => b.sprite === "hollow"), "no hollow before the stone is broken");
-S().totalStone = 70; ff(0.001);
+S().totalStone = 130; ff(0.001);
 const exBtn = d.getElementById("proj-shrineX");
-ok(!!exBtn, "the hollow is found at 70 stone");
+ok(!!exBtn, "the hollow is found at 130 stone");
 ok(exBtn.disabled, "found, not yet affordable — the dark thing waits on the hill");
 sc = G.villageScene();
 ok(sc.builds.some(b => b.sprite === "hollow" && b.col === G.ANCHORS.hollow.col),
   "the hollow opens on the quarry hill — it was always there");
 ok(d.getElementById("sec-shrine").classList.contains("hidden"), "the shrine keeps its silence until opened");
-S().stone = 90; S().wood = 60; ff(0.001); exBtn.click();
+S().stone = 180; S().wood = 60; ff(0.001); exBtn.click();
 ok(S().proj.shrineX === true, "the hollow is excavated");
 ok(!d.getElementById("sec-shrine").classList.contains("hidden"), "the shrine panel wakes");
 ok(d.getElementById("h-shrine").textContent === "the hollow", "the panel does not yet know its name");
@@ -249,7 +249,7 @@ S().favor = 150; ff(0.001); obBtn.click();
 ok(S().mir.obedience === true && near(G.jobRate("p"), 0.2 * 2), "worship doubled");
 const titheBtn = d.getElementById("proj-tithe");
 ok(!!titheBtn && titheBtn.disabled, "the tithe is teased, out of reach");
-ok(titheBtn.querySelector(".co").textContent === "250 favor + 60 food + 80 wood + 30 stone",
+ok(titheBtn.querySelector(".co").textContent === "900 favor + 60 food + 80 wood + 30 stone",
   "the tithe names its bill — four currencies at once");
 
 /* ---------- the second offering ---------- */
@@ -344,7 +344,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const st4 = { "tithe-save": JSON.stringify(sv) };
   const w5 = boot(st4).window, G5 = w5.__tithe;
   G5.tick();
-  ok(near(G5.state.wood, 0.35 * 3600, 3), "two hours away count one hour (the cap)");
+  ok(near(G5.state.wood, 0.6 * 3600, 3), "two hours away count one hour (the cap)");
   ok(near(G5.state.food, 1000 + (0 - 0.25) * 3600, 3), "the mouths kept eating while you were away");
 }
 
@@ -357,7 +357,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   SS.pop = 2; SS.jobs.m = 1; SS.food = 5;
   SS.surgeLeft = 2; SS.last = Date.now() - 10000;
   GS.tick();
-  ok(near(SS.stone, 0.3125 * 24, 0.4), "the surge pays exactly its seconds, even across one big tick");
+  ok(near(SS.stone, 0.5 * 24, 0.4), "the surge pays exactly its seconds, even across one big tick");
   ok(SS.surgeLeft === 0, "and not one second more");
 }
 
@@ -378,10 +378,10 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const stG = {};
   const wG = boot(stG).window, dG = wG.document, GG = wG.__tithe, SG = GG.state;
   SG.proj.fire = true; SG.bld.hut = 1; SG.pop = 2; SG.jobs.f = 1;
-  SG.food = 18; SG.totalFood = 119;
+  SG.food = 18; SG.totalFood = 195;
   SG.last = Date.now() - 100; GG.tick();
-  ok(!dG.getElementById("proj-rats"), "the granary is quiet under 120 food");
-  SG.totalFood = 121; SG.last = Date.now() - 100; GG.tick();
+  ok(!dG.getElementById("proj-rats"), "the granary is quiet under 200 food");
+  SG.totalFood = 205; SG.last = Date.now() - 100; GG.tick();
   const ratsBtn = dG.getElementById("proj-rats");
   ok(!!ratsBtn, "abundance draws them out");
   const watcher = GG.nameAt(SG.ratsIdx);
@@ -572,7 +572,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   const st8 = { "tithe-save": JSON.stringify(sv) };
   const G8 = boot(st8).window.__tithe;
   G8.tick();
-  ok(near(G8.state.wood, 0.35 * 8 * 3600, 3), "ten hours away count eight");
+  ok(near(G8.state.wood, 0.6 * 8 * 3600, 3), "ten hours away count eight");
 }
 
 /* ---------- the temple: the hollow learns its name ---------- */
@@ -591,7 +591,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(GT.villageScene().builds.some(b => b.sprite === "shrine"), "the shrine still stands meanwhile");
   ST.jobs.p = 1;
   ok(near(GT.jobRate("p"), 0.2), "worship before: one prayer's pace");
-  ST.stone = 120; ST.wood = 80; ST.favor = 150;
+  ST.stone = 120; ST.wood = 80; ST.favor = 400;
   ST.last = Date.now() - 1; GT.tick();
   tBtn.click();
   ok(ST.proj.temple === true && ST.stone === 0 && ST.wood === 0 && near(ST.favor, 0, 0.01),
@@ -624,7 +624,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   SQ.favor = 350; SQ.last = Date.now() - 1; GQ.tick();
   qBtn.click();
   ok(SQ.mir.quickening === true && SQ.favor === 0, "three hundred fifty favor, paid");
-  ok(near(GQ.arriveAt(), 15 * Math.pow(1.3, 4) * 0.5 * 0.5, 0.05),
+  ok(near(GQ.arriveAt(), 15 * Math.pow(1.2, 4) * 0.5 * 0.5, 0.05),
     "the bar halves on top of the year — the bottleneck moves to food");
   ok(GQ.arriveCdS() === 10, "and the road shortens to ten");
 }
@@ -642,15 +642,15 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   SD.bld.hut = 4; SD.bld.farm = 3; SD.bld.quarry = 1; SD.bld.sawpit = 1; SD.bld.granary = 1;
   SD.pop = 8; SD.jobs = { f:3, w:1, m:1, p:2, c:1 };
   SD.turn1 = true; SD.offerings = 7; SD.nameIdx = 8; SD.totalFavor = 405;
-  SD.totalFood = 130; SD.totalWood = 100; SD.totalStone = 100;
-  SD.favor = 250; SD.food = 200; SD.wood = 80; SD.stone = 30;
+  SD.totalFood = 220; SD.totalWood = 100; SD.totalStone = 200;
+  SD.favor = 900; SD.food = 200; SD.wood = 80; SD.stone = 30;
   tk();
   const billBtn = dD.getElementById("proj-tithe");
   ok(!!billBtn && !billBtn.disabled, "the bill can be paid");
   ok(dD.getElementById("sliderRow").classList.contains("ghost"), "the slider waits unseen");
   ok(dD.getElementById("earlyWorks").classList.contains("hidden"), "the summary line waits unseen");
   ok(!dD.getElementById("jm-f").disabled, "the hands are still yours");
-  ok(dD.getElementById("bld-hut").querySelector(".co").textContent === "35 wood",
+  ok(dD.getElementById("bld-hut").querySelector(".co").textContent === "30 wood",
     "a fifth hut still has a price");
 
   billBtn.click();
@@ -770,6 +770,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   SH.pop = 8; SH.turn1 = true; SH.offerings = 7; SH.nameIdx = 8; SH.totalFavor = 405;
   SH.totalFood = 130; SH.totalWood = 100; SH.totalStone = 100;
   SH.favor = 600; SH.food = 200;
+  SH.slider = 0.35;  /* v3: priests pray at 0.25 — at rest the fields must still outweigh the shrine */
   const tk = () => { SH.last = Date.now() - 1; GH.tick(); };
   tk();
 
@@ -793,7 +794,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(dbt2.col === dbt[0].col && dbt2.row === dbt[0].row, "and never walks, motion or not");
 
   /* below half the stock, doubt is only a tax */
-  ok(SH.jobs.f === 2 && SH.jobs.p === 3 && GH.deriveJobs().d === 1,
+  ok(SH.jobs.f === 2 && SH.jobs.p === 2 && GH.deriveJobs().d === 1,
     "a doubter neither works nor worships");
   ok(GH.prodOf("favor") > 0, "below half the stock, doubt is only a tax");
 
@@ -1594,7 +1595,7 @@ ok(!!store["tithe-save"], "save written on beforeunload");
   ok(near(G92.uMult(), 1.5, 1e-9), "the cycle pays half again");
   S92.pop = 1; S92.jobs.f = 1;
   ok(near(G92.jobRate("f"), 0.75, 1e-9), "a forager gathers half again as fast");
-  ok(near(G92.clickPower(), 1.5, 1e-9), "the hand keeps the bargain too");
+  ok(near(G92.clickPower(), 1, 1e-9), "v3: the hand is exempt from the cycle — the bargain belongs to the village");
 
   /* an import into a clean browser carries the count and re-seeds the ledger */
   const stX = { "tithe-save": JSON.stringify(next9) };
@@ -1895,6 +1896,109 @@ ok(JSON.stringify(G.genVillage(123)) !== JSON.stringify(G.genVillage(124)), "a d
   const GC = boot(stC).window.__tithe;
   GC.state.pop = 40; GC.state.bld.hut = 5;
   ok(GC.villageScene().figures.length === 24, "the field holds twenty-four figures at most");
+}
+
+/* ---------- v3-m1: the hand retires, the buildings deepen ---------- */
+
+{
+  /* the hand is flat forever: no flint bonus, no cycle bonus */
+  const st1 = {};
+  const w1 = boot(st1).window, d1 = w1.document, G1 = w1.__tithe, S1 = G1.state;
+  ok(G1.clickPower() === 1, "the hand starts at one");
+  S1.proj.tools = true;
+  ok(G1.clickPower() === 1, "flint sharpens the trades, never the hand");
+
+  /* the level rows reveal in the works column and deepen at their anchors */
+  S1.proj.fire = true; S1.bld.hut = 2; S1.bld.farm = 1; S1.pop = 4; S1.jobs.f = 1;
+  S1.last = Date.now() - 1; G1.tick();
+  const lh = d1.getElementById("lvl-longhouse");
+  ok(!!lh, "the longhouse is offered at two huts");
+  ok(lh.querySelector(".co").textContent === "45 wood + 12 stone", "and names its first price");
+  ok(G1.cap() === 4, "before: room for four");
+  S1.wood = 45; S1.stone = 12; S1.last = Date.now() - 1; G1.tick();
+  lh.click();
+  ok(S1.lvl.longhouse === 1 && S1.wood === 0 && S1.stone === 0, "the first longhouse is raised");
+  ok(G1.cap() === 6, "room for two more — the anchor held, the building deepened");
+  ok(lh.querySelector(".ct").textContent === "1", "the count column carries the depth");
+  ok(lh.querySelector(".co").textContent === "57 wood + 15 stone", "the next rung costs a quarter again");
+  ok(lh.parentElement.querySelector(".tease").textContent === "room for +2", "the tease reads the standing depth");
+  G1.buyLvl(G1.LVL.find(l => l.id === "longhouse"));
+  ok(S1.lvl.longhouse === 1, "an empty wallet buys nothing");
+
+  /* terraces pump the foragers — a level is a multiplier, not a sprite */
+  S1.proj.tools = true; S1.bld.farm = 2;
+  const f0 = G1.jobRate("f");
+  S1.lvl.terraces = 2;
+  ok(near(G1.jobRate("f") / f0, 1 + 0.25 * 2, 0.001),
+    "two terraces stack on two farms — the depth multiplies the anchor");
+
+  /* the long saw carries the overtake contract */
+  S1.bld.sawpit = 1; S1.lvl.longsaw = 2; S1.jobs = { f:0, w:4, m:0, p:0, c:0 };
+  ok(near(G1.jobRate("w"), 4 * 0.6 * (1 + 0.25) * (1 + 0.8 * 2) * 1.5, 0.01),
+    "four cutters under a deep saw out-run any hand");
+
+  /* the high loft keeps sixteen hours */
+  S1.bld.granary = 1;
+  ok(G1.capS() === 8 * 3600, "the granary keeps eight");
+  S1.lvl.highloft = 1;
+  ok(G1.capS() === 16 * 3600, "the loft keeps sixteen");
+}
+
+{
+  /* the felt moment: the village outgrows the hand, once, and the verbs read the rate */
+  const st2 = {};
+  const w2 = boot(st2).window, d2 = w2.document, G2 = w2.__tithe, S2 = G2.state;
+  S2.proj.fire = true; S2.proj.tools = true;
+  S2.bld.hut = 3; S2.bld.farm = 1; S2.bld.sawpit = 1; S2.bld.quarry = 1; S2.lvl.longsaw = 2;
+  S2.pop = 6; S2.jobs = { f:1, w:4, m:1, p:0, c:0 }; S2.food = 50;
+  S2.clickWood = 1000; S2.jobWood = 0;  /* the rate holds, but the ledger is all hand */
+  S2.last = Date.now() - 11000; G2.tick();
+  ok(!S2.seen["outgrown"], "held rate alone is not enough — the ratio must be earned");
+  S2.clickWood = 10;
+  S2.last = Date.now() - 1000; G2.tick();
+  ok(!!S2.seen["outgrown"], "held seconds and three to one: the village outgrows the hand");
+  const tease = d2.getElementById("actTease").textContent;
+  ok(tease.indexOf("the village") === 0 && tease.indexOf("wood") > 0,
+    "the verbs' own slot reads the number that beat them");
+  /* counters: a click feeds the click ledger, a tick feeds the village's */
+  const cw0 = S2.clickWood;
+  d2.getElementById("act-wood").click();
+  ok(near(S2.clickWood, cw0 + 1, 0.001), "one click, one mark in the hand's ledger");
+}
+
+{
+  /* v9 -> v10: an old save learns the depths and the ledgers at zero */
+  const st3 = {};
+  const G3 = boot(st3).window.__tithe;
+  const mg = G3.migrate({ v: 9, turn1: true, pop: 6, bld: { hut: 3 }, proj: { fire: true } });
+  ok(mg.v === G3.SAVE_VER && mg.lvl && mg.lvl.longhouse === 0 && mg.lvl.terraces === 0,
+    "an old save arrives with no depths");
+  ok(mg.clickWood === 0 && mg.jobWood === 0 && mg.outT === 0, "and the hand's ledger at zero");
+  const mg2 = G3.migrate({ v: 10, pop: 9, bld: { hut: 3 }, lvl: { longhouse: 2 } });
+  ok(mg2.pop === 9 && mg2.lvl.longhouse === 2, "longhouses count toward the clamp: nine fit under 3+2");
+  const mg3 = G3.migrate({ v: 10, pop: 11, bld: { hut: 3 }, lvl: { longhouse: 0 } });
+  ok(mg3.pop === 6, "without them the clamp still holds");
+}
+
+{
+  /* molt 2 freezes the depths with the works; molt 3 ghosts them */
+  const st4 = {};
+  const w4 = boot(st4).window, d4 = w4.document, G4 = w4.__tithe, S4 = G4.state;
+  S4.proj.fire = true; S4.proj.tools = true; S4.bld.hut = 2; S4.bld.farm = 1; S4.bld.sawpit = 1;
+  S4.bld.quarry = 1; S4.pop = 4; S4.wood = 999; S4.stone = 999;
+  S4.last = Date.now() - 1; G4.tick();
+  ok(!!d4.getElementById("lvl-longsaw"), "the saw can deepen before the molt");
+  S4.proj.tithe = true; S4.turn1 = true; S4.offerings = 1; S4.slider = 0.5;
+  S4.last = Date.now() - 1; G4.tick();
+  const ls = d4.getElementById("lvl-longsaw");
+  ok(ls.disabled && ls.querySelector(".co").textContent === "",
+    "molt 2 freezes the depths: counts remain, costs vanish");
+  const n0 = S4.lvl.longsaw;
+  G4.buyLvl(G4.LVL.find(l => l.id === "longsaw"));
+  ok(S4.lvl.longsaw === n0, "nothing more is built by hand — depth included");
+  S4.proj.ascend = true;
+  S4.last = Date.now() - 1; G4.tick();
+  ok(ls.parentElement.classList.contains("ghost"), "molt 3: the depths go dark with the works");
 }
 
 /* ---------- the end ---------- */
